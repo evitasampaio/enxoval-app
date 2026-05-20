@@ -58,22 +58,22 @@ const DARK = {
 };
 
 const LIGHT = {
-  bg:      "#F7F4EE",
-  bgCard:  "#FFFFFF",
-  bgCardAlt:"#F2EEE6",
-  bgSurf:  "#EDE8DF",
-  border:  "#DDD5C8",
-  borderL: "#EDE8DF",
-  ink:     "#1C1917",
-  inkL:    "#44403C",
-  inkLL:   "#78716C",
-  ghost:   "#C4BAA8",
-  amber:   "#B8860B",
-  amberDim:"#FBF3DC",
-  lavender:"#6B5FA0",
-  lavenderDim:"#EEE8FF",
-  success: "#2D7A4A",
-  rose:    "#C0404A",
+  bg:         "#F5F2EC",
+  bgCard:     "#FFFFFF",
+  bgCardAlt:  "#EDEAE3",
+  bgSurf:     "#E5E0D8",
+  border:     "#C8C0B0",
+  borderL:    "#DDD8CE",
+  ink:        "#0F0D0B",      // near-black for strong contrast
+  inkL:       "#2C2A27",      // dark charcoal
+  inkLL:      "#5C574F",      // mid grey-brown — readable
+  ghost:      "#9C9489",      // muted but visible
+  amber:      "#92600A",      // darker gold for legibility on light bg
+  amberDim:   "#FBF0D8",
+  lavender:   "#4F3D8A",
+  lavenderDim:"#E8E2FF",
+  success:    "#1A6035",      // dark green
+  rose:       "#A83030",
 };
 
 // Active theme — components read this; App updates it each render
@@ -381,7 +381,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
   return (
     <div style={{
       border:`1px solid ${done?accent+"44":T.border}`,
-      borderRadius:5, background:done?accent+"0A":T.bgCard,
+      borderRadius:5, background:done?accent+"15":T.bgCard,
       padding:"12px 13px", marginBottom:8, transition:"all .2s"
     }}>
       {/* header row */}
@@ -400,7 +400,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
           </span>}
         </span>
         <button onClick={onRemove} style={{background:"none",border:"none",
-          color:T.ghost,cursor:"pointer",...mono,fontSize:9,letterSpacing:.5,textTransform:"uppercase"}}>remover</button>
+          color:T.inkLL,cursor:"pointer",...mono,fontSize:9,letterSpacing:.5,textTransform:"uppercase"}}>remover</button>
       </div>
 
       {/* price per unit — the actual individual unit price */}
@@ -606,7 +606,7 @@ function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCrea
 
   return (
     <div style={{
-      background:complete?accent+"0A":T.bgCard,
+      background:complete?accent+"15":T.bgCard,
       border:`1px solid ${complete?accent+"44":T.border}`,
       borderRadius:6,marginBottom:7,overflow:"hidden",
       transition:"background .3s,border .3s"
@@ -1026,7 +1026,7 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
   const FPill=({label,active,onClick,color=accent})=>(
     <button onClick={onClick} style={{
       padding:"3px 10px",borderRadius:3,border:`1px solid ${color}44`,
-      background:active?color:color+"18",color:active?"#111":color,
+      background:active?color:color+"30",color:active?"#111":color,
       ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"
     }}>{label}</button>
   );
@@ -1113,7 +1113,7 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
 // ─────────────────────────────────────────────────────────────────────────────
 // MANAGER
 // ─────────────────────────────────────────────────────────────────────────────
-function Manager({ categories, items, priorities, accent, onAddCat, onDeleteCat, onAddItem, onDeleteItem, onSetPriorities }) {
+function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDeleteCat, onAddItem, onDeleteItem, onSetPriorities, onToggleDark, onShowTheme }) {
   const [section,setSection]=useState("itens");
   const [activeCat,setActiveCat]=useState(categories[0]?.id||"");
   const [newCatLabel,setNewCatLabel]=useState("");
@@ -1165,8 +1165,9 @@ function Manager({ categories, items, priorities, accent, onAddCat, onDeleteCat,
   return (
     <div>
       <div style={{display:"flex",gap:0,marginBottom:16,border:`1px solid ${T.border}`,borderRadius:4,overflow:"hidden"}}>
-        <STab id="itens" lbl="Itens & Categorias"/>
+        <STab id="itens" lbl="Itens & Cat."/>
         <STab id="prioridades" lbl="Prioridades"/>
+        <STab id="aparencia" lbl="Aparência"/>
       </div>
 
       {/* PRIORITIES */}
@@ -1255,6 +1256,55 @@ function Manager({ categories, items, priorities, accent, onAddCat, onDeleteCat,
       )}
 
       {/* ITEMS & CATEGORIES */}
+      {section==="aparencia"&&(
+        <div>
+          <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:4}}>Aparência</div>
+          <div style={{...mono,fontSize:9,color:T.inkLL,letterSpacing:.5,marginBottom:18}}>
+            Personalize o visual do app.
+          </div>
+
+          {/* Dark / Light */}
+          <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:8}}>Modo de exibição</div>
+          <div style={{display:"flex",gap:8,marginBottom:22}}>
+            {[
+              [true,  "🌙", "Escuro", "Midnight Garden"],
+              [false, "☀️", "Claro",  "Luz natural"],
+            ].map(([dark, icon, label, desc])=>(
+              <button key={label} onClick={()=>{ if(isDark!==dark) onToggleDark(); }} style={{
+                flex:1, padding:"14px 10px", border:`1.5px solid ${isDark===dark?accent:T.border}`,
+                borderRadius:6, background:isDark===dark?accent+"18":T.bgCard,
+                cursor:"pointer", textAlign:"center", transition:"all .2s"
+              }}>
+                <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
+                <div style={{...mono,fontSize:11,color:isDark===dark?accent:T.ink,fontWeight:isDark===dark?700:400,letterSpacing:.5}}>{label}</div>
+                <div style={{...mono,fontSize:8,color:T.inkLL,marginTop:2}}>{desc}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Accent color */}
+          <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:8}}>Cor de destaque</div>
+          <button onClick={onShowTheme} style={{
+            width:"100%", padding:"14px",
+            border:`1.5px solid ${T.border}`, borderRadius:6,
+            background:T.bgCard, cursor:"pointer",
+            display:"flex", alignItems:"center", gap:12, transition:"all .2s"
+          }}>
+            <div style={{
+              width:36, height:36, borderRadius:"50%",
+              background:`radial-gradient(circle at 35% 35%, ${accent}AA, ${accent})`,
+              border:`2px solid ${accent}66`, flexShrink:0,
+              boxShadow:`0 0 12px ${accent}55`
+            }}/>
+            <div style={{textAlign:"left"}}>
+              <div style={{...mono,fontSize:11,color:T.ink,fontWeight:600,letterSpacing:.5}}>Alterar cor</div>
+              <div style={{...mono,fontSize:9,color:T.inkLL,marginTop:2}}>Verde · Amarelo · Rosa · Azul · Lavanda</div>
+            </div>
+            <div style={{marginLeft:"auto",color:T.inkLL,fontSize:14}}>›</div>
+          </button>
+        </div>
+      )}
+
       {section==="itens"&&(
         <div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:13}}>
@@ -1560,34 +1610,16 @@ export default function App() {
                 <span style={{fontSize:11, color:T.ghost, fontStyle:"normal"}}>✎</span>
               </div>
             )}
-            <div style={{...mono,fontSize:8,color:T.ghost,letterSpacing:3,textTransform:"uppercase",marginTop:2}}>
+            <div style={{...mono,fontSize:10,color:T.inkLL,letterSpacing:2,textTransform:"uppercase",marginTop:3}}>
               Setembro · São Paulo
             </div>
           </div>
 
-          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-            {/* dark/light toggle */}
-            <button onClick={toggleDark} title={isDark?"Modo claro":"Modo escuro"} style={{
-              width:28,height:28,borderRadius:"50%",
-              background:isDark?"#1E2B25":"#EDE8DF",
-              border:`1px solid ${T.border}`,cursor:"pointer",
-              display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:13, transition:"all .2s", flexShrink:0
-            }}>{isDark?"☀️":"🌙"}</button>
-            {/* palette switcher */}
-            <button onClick={()=>setShowTheme(true)} style={{
-              width:28,height:28,borderRadius:"50%",
-              background:`radial-gradient(circle at 35% 35%, ${pal.accentL}, ${accent})`,
-              border:`2px solid ${accent}55`,cursor:"pointer",
-              boxShadow:`0 0 10px ${accent}44`,
-              transition:"box-shadow .2s",flexShrink:0
-            }} title="Alterar cor"/>
-            <div style={{textAlign:"right"}}>
-              <div style={{...mono,fontSize:11,color:accent,letterSpacing:1}}>{globalPct}%</div>
-              <div style={{...mono,fontSize:8,color:T.inkLL,marginTop:1}}>
-                {totalBought}/{totalSug}{grandSpent>0?` · ${fmtBRL(grandSpent)}`:""}</div>
-              {totalPending>0&&<div style={{...mono,fontSize:8,color:T.amber}}>◌{totalPending}</div>}
-            </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{...mono,fontSize:13,color:accent,letterSpacing:.5,fontWeight:600}}>{globalPct}%</div>
+            <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:2}}>
+              {totalBought}/{totalSug}{grandSpent>0?` · ${fmtBRL(grandSpent)}`:""}</div>
+            {totalPending>0&&<div style={{...mono,fontSize:10,color:T.amber,marginTop:1}}>◌{totalPending}</div>}
           </div>
         </div>
 
@@ -1595,16 +1627,16 @@ export default function App() {
         <div style={{height:1,background:T.bgSurf,overflow:"hidden",marginBottom:0}}>
           <div style={{height:"100%",background:accent,width:`${globalPct}%`,transition:"width .5s ease"}}/>
         </div>
-        {saving&&<div style={{...mono,fontSize:7,color:T.ghost,textAlign:"right",padding:"3px 0 0",letterSpacing:1}}>salvando…</div>}
+        {saving&&<div style={{...mono,fontSize:7,color:T.inkLL,textAlign:"right",padding:"3px 0 0",letterSpacing:1}}>salvando…</div>}
 
         {/* tabs */}
         <div style={{display:"flex",marginTop:saving?0:3}}>
           {TABS.map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
-              flex:1,padding:"11px 2px 10px",border:"none",background:"transparent",
-              color:tab===t.id?accent:T.ghost,
-              ...mono,fontSize:8,letterSpacing:1,textTransform:"uppercase",
-              cursor:"pointer",
+              flex:1,padding:"12px 4px 11px",border:"none",background:"transparent",
+              color:tab===t.id?accent:T.inkLL,
+              ...mono,fontSize:11,letterSpacing:.5,textTransform:"uppercase",
+              cursor:"pointer", fontWeight:tab===t.id?600:400,
               borderBottom:tab===t.id?`2px solid ${accent}`:"2px solid transparent",
               transition:"all .15s"
             }}>{t.label}</button>
@@ -1632,9 +1664,12 @@ export default function App() {
         )}
         {tab==="gerenciar"&&(
           <Manager categories={categories} items={items} priorities={priorities}
-            accent={accent} onAddCat={addCat} onDeleteCat={deleteCat}
+            accent={accent} isDark={isDark}
+            onAddCat={addCat} onDeleteCat={deleteCat}
             onAddItem={addItem} onDeleteItem={deleteItem}
-            onSetPriorities={setPriorities}/>
+            onSetPriorities={setPriorities}
+            onToggleDark={toggleDark}
+            onShowTheme={()=>setShowTheme(true)}/>
         )}
       </div>
 
