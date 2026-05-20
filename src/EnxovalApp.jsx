@@ -346,9 +346,14 @@ function TagPicker({ selected, customTags, onToggle }) {
             <button key={tag.id} onClick={()=>onToggle(tag.id)} style={{
               background:on?tag.color:tag.color+"20", color:on?"#111":tag.color,
               border:`1px solid ${tag.color}55`, borderRadius:3,
-              padding:"2px 9px", ...mono, fontSize:11, letterSpacing:.7,
-              textTransform:"uppercase", cursor:"pointer", transition:"all .15s"
-            }}>{tag.label}</button>
+              padding:"3px 10px", ...mono, fontSize:11, letterSpacing:.5,
+              textTransform:"uppercase", cursor:"pointer", transition:"all .15s",
+              fontWeight:on?700:400,
+              display:"inline-flex", alignItems:"center", gap:5
+            }}>
+              {tag.label}
+              {on&&<span style={{opacity:.7,fontSize:10}}>✕</span>}
+            </button>
           );
         })}
       </div>
@@ -703,9 +708,8 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
          </div>
         :visible.map(cat=>(
           <div key={cat.id} style={{marginBottom:22}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
-              <div style={{height:1,flex:1,background:T.border}}/>
-              <span style={{...mono,fontSize:11,letterSpacing:2,color:accent,textTransform:"uppercase"}}>{cat.label}</span>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+              <span style={{...mono,fontSize:11,letterSpacing:1.5,color:accent,textTransform:"uppercase",fontWeight:600}}>{cat.label}</span>
               <div style={{height:1,flex:1,background:T.border}}/>
             </div>
             {cat.items.map(item=>(
@@ -1437,7 +1441,15 @@ function Manager({ categories, items, priorities, customTags, accent, isDark, on
 
       {section==="aparencia"&&(
         <div>
-          <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:4}}>Aparência</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+            <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic"}}>Aparência</div>
+            <button onClick={onLogout} style={{
+              background:"none",border:`1px solid ${T.rose}55`,borderRadius:3,
+              padding:"5px 13px",cursor:"pointer",
+              ...mono,fontSize:11,letterSpacing:.5,textTransform:"uppercase",
+              color:T.rose
+            }}>⎋ Sair</button>
+          </div>
           <div style={{...mono,fontSize:11,color:T.inkLL,letterSpacing:.5,marginBottom:18}}>
             Personalize o visual do app.
           </div>
@@ -1784,23 +1796,36 @@ export default function App({ user, onLogout }) {
                 <span style={{fontSize:11, color:T.ghost, fontStyle:"normal"}}>✎</span>
               </div>
             )}
-            <div style={{...mono,fontSize:10,color:T.inkLL,letterSpacing:2,textTransform:"uppercase",marginTop:3}}>
-              Setembro · São Paulo
-            </div>
-            {/* logout */}
-            <button onClick={onLogout} style={{
-              marginTop:6, background:"none", border:`1px solid ${T.border}`,
-              borderRadius:3, padding:"3px 9px", cursor:"pointer",
-              ...mono, fontSize:11, letterSpacing:.5, textTransform:"uppercase",
-              color:T.inkLL
-            }}>⎋ Sair</button>
+
+
           </div>
 
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{...mono,fontSize:13,color:accent,letterSpacing:.5,fontWeight:600}}>{globalPct}%</div>
-            <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:2}}>
-              {totalBought}/{totalSug}{grandSpent>0?` · ${fmtBRL(grandSpent)}`:""}</div>
-            {totalPending>0&&<div style={{...mono,fontSize:10,color:T.amber,marginTop:1}}>◌{totalPending}</div>}
+          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            {/* large completion ring */}
+            <div style={{position:"relative",width:52,height:52,flexShrink:0}}>
+              <svg width={52} height={52} style={{transform:"rotate(-90deg)"}}>
+                <circle cx={26} cy={26} r={22} fill="none" stroke={T.bgSurf} strokeWidth={4}/>
+                <circle cx={26} cy={26} r={22} fill="none"
+                  stroke={globalPct>=100?T.success:accent} strokeWidth={4}
+                  strokeDasharray={`${2*Math.PI*22*globalPct/100} ${2*Math.PI*22}`}
+                  strokeLinecap="round"
+                  style={{transition:"stroke-dasharray .5s ease"}}/>
+              </svg>
+              <div style={{
+                position:"absolute",inset:0,display:"flex",flexDirection:"column",
+                alignItems:"center",justifyContent:"center",gap:0
+              }}>
+                <span style={{...mono,fontSize:13,fontWeight:700,color:globalPct>=100?T.success:accent,lineHeight:1}}>
+                  {globalPct>=100?"✓":`${globalPct}%`}
+                </span>
+              </div>
+            </div>
+            <div style={{textAlign:"left"}}>
+              <div style={{...mono,fontSize:11,color:T.inkLL}}>
+                {totalBought}/{totalSug} un</div>
+              {grandSpent>0&&<div style={{...mono,fontSize:11,color:accent,marginTop:1}}>{fmtBRL(grandSpent)}</div>}
+              {totalPending>0&&<div style={{...mono,fontSize:10,color:T.amber,marginTop:1}}>◌{totalPending} pend.</div>}
+            </div>
           </div>
         </div>
 
