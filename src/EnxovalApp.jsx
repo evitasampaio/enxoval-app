@@ -80,14 +80,26 @@ const LIGHT = {
 // Active theme — components read this; App updates it each render
 let T = DARK;
 
-// Tam colors stay consistent (dark variants)
-const TAM = {
+// Tam colors — two variants: dark and light
+const TAM_DARK = {
   "RN":{ color:"#F0A060", bg:"#281808", border:"#3A2010" },
   "P": { color:"#60B4E0", bg:"#102030", border:"#1A3040" },
   "M": { color:"#A080E0", bg:"#1A1030", border:"#281840" },
   "G": { color:"#5ECBA0", bg:"#0E2018", border:"#1A3028" },
   "—": { color:"#5A7A6A", bg:"#141E1A", border:"#1E2B25" },
 };
+const TAM_LIGHT = {
+  "RN":{ color:"#B05010", bg:"#FDF0E3", border:"#F0C090" },
+  "P": { color:"#1870A0", bg:"#E3F2FA", border:"#90CCF0" },
+  "M": { color:"#6040A0", bg:"#EDE8FA", border:"#B090E0" },
+  "G": { color:"#1A6035", bg:"#E3F5EC", border:"#90D0B0" },
+  "—": { color:"#5C574F", bg:"#EDEAE3", border:"#C8C0B0" },
+};
+// Use the right TAM variant based on current theme
+const getTAM = () => (T === DARK ? TAM_DARK : TAM_LIGHT);
+// Keep TAM as alias for backwards compat (used in many places)
+let TAM = TAM_DARK;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA
@@ -673,15 +685,25 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
 
       {/* priority filter */}
       <div style={{display:"flex",gap:4,marginBottom:9,flexWrap:"wrap"}}>
-        {[["todos","Todos",T.inkL,T.bgSurf],...priorities.map(p=>[p.id,p.label,p.color,p.bg])].map(([id,lbl,col,bg])=>(
-          <button key={id} onClick={()=>setFilterPrio(id)} style={{
-            padding:"3px 11px",borderRadius:3,border:"none",
-            background:filterPrio===id?col:bg,
-            color:filterPrio===id?"#111":col,
-            ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",
-            cursor:"pointer",transition:"all .15s"
-          }}>{lbl}</button>
-        ))}
+        {[["todos","Todos",null,null],...priorities.map(p=>[p.id,p.label,p.color,p.bg])].map(([id,lbl,col,bg])=>{
+          const isTodos = id==="todos";
+          const isActive = filterPrio===id;
+          const activeBg = isTodos ? T.ink : col;
+          const activeColor = isTodos ? (T===DARK?"#E8F5EF":"#FFFFFF") : "#111";
+          const inactiveBg = isTodos ? T.bgSurf : (bg||T.bgSurf);
+          const inactiveColor = isTodos ? T.inkLL : (col||T.inkL);
+          return (
+            <button key={id} onClick={()=>setFilterPrio(id)} style={{
+              padding:"3px 11px",borderRadius:3,border:"none",
+              background:isActive?activeBg:inactiveBg,
+              color:isActive?activeColor:inactiveColor,
+              ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",
+              cursor:"pointer",transition:"all .15s",
+              fontWeight:isActive?700:400,
+              border: isTodos&&!isActive ? `1px solid ${T.border}` : "none"
+            }}>{lbl}</button>
+          );
+        })}
       </div>
 
       {/* category filter */}
@@ -689,7 +711,7 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
         <button onClick={()=>setFilterCat(null)} style={{
           padding:"3px 10px",borderRadius:3,border:"none",whiteSpace:"nowrap",
           background:!filterCat?accent:T.bgSurf,
-          color:!filterCat?"#111":T.inkL,
+          color:!filterCat?"#fff":T.inkL,
           ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
         }}>Todas</button>
         {categories.map(cat=>(
@@ -1739,6 +1761,7 @@ export default function App({ user, onLogout }) {
   const pal = ACCENT_PALETTES[accentId]||ACCENT_PALETTES.verde;
   const accent = pal.accent;
   T = isDark ? DARK : LIGHT; // update module-level theme
+  TAM = isDark ? TAM_DARK : TAM_LIGHT; // update module-level tam colors
 
   // stats
   let totalSug=0,totalBought=0,totalPending=0,grandSpent=0;
