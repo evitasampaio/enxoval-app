@@ -335,14 +335,7 @@ function DInput({ value, onChange, placeholder, style, type="text", step, autoFo
 // ─────────────────────────────────────────────────────────────────────────────
 // TAG PICKER
 // ─────────────────────────────────────────────────────────────────────────────
-function TagPicker({ selected, customTags, onToggle, onCreateTag }) {
-  const [creating, setCreating] = useState(false);
-  const [lbl, setLbl] = useState(""); const [col, setCol] = useState("#5ECBA0");
-  const create = () => {
-    if(!lbl.trim()) return;
-    const t={id:"c_"+uid(),label:lbl.trim(),color:col};
-    onCreateTag(t); onToggle(t.id); setLbl(""); setCreating(false);
-  };
+function TagPicker({ selected, customTags, onToggle }) {
   return (
     <div>
       <div style={{...mono,fontSize:10,letterSpacing:1,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Tags</div>
@@ -358,29 +351,10 @@ function TagPicker({ selected, customTags, onToggle, onCreateTag }) {
             }}>{tag.label}</button>
           );
         })}
-        <button onClick={()=>setCreating(x=>!x)} style={{
-          background:"transparent", color:T.inkLL,
-          border:`1px dashed ${T.border}`, borderRadius:3,
-          padding:"2px 9px", ...mono, fontSize:11, letterSpacing:.7,
-          textTransform:"uppercase", cursor:"pointer"
-        }}>+ Nova</button>
       </div>
-      {creating && (
-        <div style={{display:"flex",gap:6,alignItems:"center",padding:"8px 10px",
-          background:T.bg,border:`1px solid ${T.border}`,borderRadius:3}}>
-          <input autoFocus value={lbl} onChange={e=>setLbl(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&create()} placeholder="Nome…"
-            style={{flex:1,background:T.bgCard,border:`1px solid ${T.border}`,
-              borderRadius:3,padding:"4px 8px",...mono,fontSize:11,
-              color:T.ink,outline:"none"}}/>
-          <input type="color" value={col} onChange={e=>setCol(e.target.value)}
-            style={{width:28,height:28,border:"none",borderRadius:3,cursor:"pointer",padding:0,background:"transparent"}}/>
-          <button onClick={create} style={{background:col,color:"#111",border:"none",
-            borderRadius:3,padding:"4px 10px",...mono,fontSize:11,fontWeight:700,cursor:"pointer"}}>Ok</button>
-          <button onClick={()=>setCreating(false)} style={{background:"transparent",
-            color:T.inkLL,border:"none",cursor:"pointer",...mono,fontSize:10}}>✕</button>
-        </div>
-      )}
+      <div style={{...mono,fontSize:10,color:T.ghost,marginTop:4}}>
+        Gerencie tags em Gerenciar → Tags
+      </div>
     </div>
   );
 }
@@ -496,8 +470,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
       </div>
 
       <TagPicker selected={unit.tags||[]} customTags={customTags}
-        onToggle={id=>onChange({...unit,tags:(unit.tags||[]).includes(id)?(unit.tags||[]).filter(x=>x!==id):[...(unit.tags||[]),id]})}
-        onCreateTag={onCreateTag}/>
+        onToggle={id=>onChange({...unit,tags:(unit.tags||[]).includes(id)?(unit.tags||[]).filter(x=>x!==id):[...(unit.tags||[]),id]})}/>
       <textarea value={unit.note||""} onChange={e=>onChange({...unit,note:e.target.value})}
         placeholder="Observação — marca, loja, presenteado por…"
         style={{
@@ -547,12 +520,7 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
               background:full?T.success:accent,
               width:`${pct}%`,transition:"width .4s ease"}}/>
           </div>
-          {tagObjs.length>0&&(
-            <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>
-              {tagObjs.slice(0,3).map(t=><Chip key={t.id} label={t.label} color={t.color} xs/>)}
-              {tagObjs.length>3&&<span style={{...mono,fontSize:11,color:T.inkLL}}>+{tagObjs.length-3}</span>}
-            </div>
-          )}
+
         </div>
         {bought<sz.qty&&(
           <button onClick={e=>{e.stopPropagation();upUnits([...units,makeUnit()]);}} style={{
@@ -620,8 +588,7 @@ function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCrea
   // Totals derived from individual unit prices (not a single item price)
   const unitSpent = item.sizes.reduce((s,sz)=>
     s+(entries[`${item.id}_${sz.tam}`]?.units||[]).reduce((a,u)=>a+(parseFloat(u.price)||0),0),0);
-  const tagIds=[...new Set(item.sizes.flatMap(sz=>(entries[`${item.id}_${sz.tam}`]?.units||[]).flatMap(u=>u.tags||[])))];
-  const tagObjs=tagIds.map(id=>tagById(id,customTags)).filter(Boolean);
+
 
   return (
     <div style={{
@@ -642,7 +609,7 @@ function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCrea
             <span style={{...mono,fontSize:10,color:T.inkLL}}>{totalBought}/{totalSug} un</span>
             {pending>0&&<span style={{...mono,fontSize:11,color:T.amber}}>◌{pending}</span>}
             {unitSpent>0&&<span style={{...mono,fontSize:11,color:accent}}>{fmtBRL(unitSpent)}</span>}
-            {tagObjs.slice(0,2).map(t=><Chip key={t.id} label={t.label} color={t.color} xs/>)}
+
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
@@ -1132,7 +1099,178 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
 // ─────────────────────────────────────────────────────────────────────────────
 // MANAGER
 // ─────────────────────────────────────────────────────────────────────────────
-function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDeleteCat, onAddItem, onDeleteItem, onSetPriorities, onToggleDark, onShowTheme }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// MANAGER ITEM ROW — with inline qty editing
+// ─────────────────────────────────────────────────────────────────────────────
+function ManagerItemRow({ item, pm, onDelete, onUpdateSizes }) {
+  const [expanded, setExpanded] = useState(false);
+  const [sizes, setSizes] = useState(item.sizes);
+
+  const updateQty = (idx, val) => {
+    const n = [...sizes];
+    n[idx] = { ...n[idx], qty: Math.max(0, parseInt(val)||0) };
+    setSizes(n);
+    onUpdateSizes(n);
+  };
+  const addSize = () => {
+    const n = [...sizes, {tam:"—", qty:1}];
+    setSizes(n); onUpdateSizes(n);
+  };
+  const removeSize = (idx) => {
+    const n = sizes.filter((_,i)=>i!==idx);
+    setSizes(n); onUpdateSizes(n);
+  };
+  const updateTam = (idx, val) => {
+    const n = [...sizes]; n[idx]={...n[idx],tam:val}; setSizes(n); onUpdateSizes(n);
+  };
+
+  return (
+    <div style={{background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:4,marginBottom:4,overflow:"hidden"}}>
+      {/* collapsed row */}
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",cursor:"pointer"}}
+        onClick={()=>setExpanded(x=>!x)}>
+        <div style={{flex:1}}>
+          <div style={{...serif,fontSize:13,color:T.ink,fontStyle:"italic"}}>{item.name}</div>
+          <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
+            <Chip label={pm.label} color={pm.color} bg={pm.bg} xs/>
+            {sizes.map((s,i)=>(
+              <span key={i} style={{...mono,fontSize:11,color:T.inkLL,background:T.bgSurf,borderRadius:2,padding:"1px 5px"}}>
+                {s.tam!=="—"?`${s.tam}×${s.qty}`:`×${s.qty}`}
+              </span>
+            ))}
+          </div>
+        </div>
+        <span style={{...mono,fontSize:11,color:T.inkLL,marginRight:2}}>Editar qtd</span>
+        <span style={{color:T.ghost,fontSize:13,transform:expanded?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
+        <button onClick={e=>{e.stopPropagation();onDelete();}}
+          style={{background:"none",border:"none",color:T.ghost,cursor:"pointer",fontSize:13,padding:4}}>✕</button>
+      </div>
+
+      {/* expanded: qty editor */}
+      {expanded&&(
+        <div style={{padding:"4px 11px 11px",borderTop:`1px solid ${T.border}`}}>
+          <div style={{...mono,fontSize:11,letterSpacing:1,textTransform:"uppercase",color:T.inkLL,marginBottom:7,marginTop:6}}>
+            Tamanhos e quantidades
+          </div>
+          {sizes.map((sz,i)=>(
+            <div key={i} style={{display:"flex",gap:5,alignItems:"center",marginBottom:5}}>
+              <select value={sz.tam} onChange={e=>updateTam(i,e.target.value)} style={{
+                background:T.bg,border:`1px solid ${T.border}`,borderRadius:3,
+                padding:"5px 7px",...mono,fontSize:11,color:T.ink,cursor:"pointer",outline:"none",width:72
+              }}>
+                {["—","RN","P","M","G","GG"].map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+              <span style={{...mono,fontSize:12,color:T.inkLL}}>×</span>
+              <input type="number" min={0} value={sz.qty}
+                onChange={e=>updateQty(i,e.target.value)}
+                style={{width:64,background:T.bg,border:`1px solid ${T.border}`,borderRadius:3,
+                  padding:"5px 7px",...mono,fontSize:13,color:T.ink,outline:"none",textAlign:"center"}}/>
+              {sizes.length>1&&(
+                <button onClick={()=>removeSize(i)}
+                  style={{background:"none",border:"none",color:T.ghost,cursor:"pointer",fontSize:12,padding:"2px 4px"}}>✕</button>
+              )}
+            </div>
+          ))}
+          <button onClick={addSize} style={{
+            background:"transparent",color:T.inkLL,border:`1px dashed ${T.border}`,
+            borderRadius:3,padding:"4px 10px",...mono,fontSize:11,cursor:"pointer",marginTop:2
+          }}>+ Tamanho</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAG MANAGER ROW
+// ─────────────────────────────────────────────────────────────────────────────
+function TagManagerRow({ tag, isPreset, onEdit, onDelete, accent }) {
+  const [editing, setEditing] = useState(false);
+  const [lbl, setLbl] = useState(tag.label);
+  const [col, setCol] = useState(tag.color);
+  const save = () => { if(lbl.trim()) { onEdit(lbl.trim(), col); setEditing(false); } };
+  return (
+    <div style={{
+      background:T.bgCard, border:`1px solid ${T.border}`,
+      borderRadius:4, marginBottom:5, overflow:"hidden"
+    }}>
+      {editing ? (
+        <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:7}}>
+          <div style={{display:"flex",gap:7,alignItems:"center"}}>
+            <input autoFocus value={lbl} onChange={e=>setLbl(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&save()}
+              style={{flex:1,background:T.bg,border:`1px solid ${T.border}`,borderRadius:3,
+                padding:"6px 9px",...serif,fontSize:13,color:T.ink,outline:"none"}}/>
+            <input type="color" value={col} onChange={e=>setCol(e.target.value)}
+              style={{width:32,height:32,border:"none",borderRadius:3,cursor:"pointer",padding:0}}/>
+          </div>
+          <div style={{display:"flex",gap:5}}>
+            <button onClick={save} style={{flex:1,padding:"7px",background:accent,color:"#111",
+              border:"none",borderRadius:3,...mono,fontSize:11,cursor:"pointer",fontWeight:700}}>Salvar</button>
+            <button onClick={()=>setEditing(false)} style={{padding:"7px 11px",background:T.bgSurf,
+              color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:11,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px"}}>
+          <div style={{width:12,height:12,borderRadius:"50%",background:tag.color,flexShrink:0,
+            boxShadow:`0 0 6px ${tag.color}66`}}/>
+          <Chip label={tag.label} color={tag.color}/>
+          {isPreset && <span style={{...mono,fontSize:10,color:T.ghost}}>padrão</span>}
+          <span style={{...mono,fontSize:11,color:T.inkLL,flex:1}}/>
+          <button onClick={()=>{setLbl(tag.label);setCol(tag.color);setEditing(true);}} style={{
+            background:T.bgSurf,color:T.inkL,border:`1px solid ${T.border}`,
+            borderRadius:3,...mono,fontSize:11,padding:"2px 9px",cursor:"pointer"
+          }}>Editar</button>
+          {!isPreset && (
+            <button onClick={onDelete} style={{background:"none",border:"none",
+              color:T.ghost,cursor:"pointer",fontSize:13,padding:"2px 4px"}}>✕</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddTagForm({ onAdd, accent }) {
+  const [open, setOpen] = useState(false);
+  const [lbl, setLbl] = useState("");
+  const [col, setCol] = useState("#5ECBA0");
+  const add = () => {
+    if(!lbl.trim()) return;
+    onAdd({ id:"c_"+uid(), label:lbl.trim(), color:col });
+    setLbl(""); setOpen(false);
+  };
+  if (!open) return (
+    <button onClick={()=>setOpen(true)} style={{
+      width:"100%",marginTop:6,padding:"9px",
+      background:accent+"18",color:accent,
+      border:`1px solid ${accent}44`,borderRadius:4,
+      ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
+    }}>+ Nova tag</button>
+  );
+  return (
+    <div style={{background:`${accent}0D`,border:`1px solid ${accent}33`,borderRadius:4,padding:"12px",marginTop:7}}>
+      <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:accent,marginBottom:8}}>Nova tag</div>
+      <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:8}}>
+        <input autoFocus value={lbl} onChange={e=>setLbl(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&add()} placeholder="Nome da tag…"
+          style={{flex:1,background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:3,
+            padding:"7px 10px",...serif,fontSize:13,color:T.ink,outline:"none"}}/>
+        <input type="color" value={col} onChange={e=>setCol(e.target.value)}
+          style={{width:36,height:36,border:`1px solid ${T.border}`,borderRadius:3,cursor:"pointer",padding:0}}/>
+      </div>
+      <div style={{display:"flex",gap:5}}>
+        <button onClick={add} style={{flex:1,padding:"8px",background:accent,color:"#111",
+          border:"none",borderRadius:3,...mono,fontSize:11,fontWeight:700,cursor:"pointer"}}>Criar</button>
+        <button onClick={()=>{setOpen(false);setLbl("");}} style={{padding:"8px 12px",background:T.bgSurf,
+          color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:11,cursor:"pointer"}}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+function Manager({ categories, items, priorities, customTags, accent, isDark, onAddCat, onDeleteCat, onAddItem, onDeleteItem, onUpdateItem, onSetPriorities, onToggleDark, onShowTheme, onCreateTag, onDeleteTag, onEditTag }) {
   const [section,setSection]=useState("itens");
   const [activeCat,setActiveCat]=useState(categories[0]?.id||"");
   const [newCatLabel,setNewCatLabel]=useState("");
@@ -1186,6 +1324,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
       <div style={{display:"flex",gap:0,marginBottom:16,border:`1px solid ${T.border}`,borderRadius:4,overflow:"hidden"}}>
         <STab id="itens" lbl="Itens & Cat."/>
         <STab id="prioridades" lbl="Prioridades"/>
+        <STab id="tags" lbl="Tags"/>
         <STab id="aparencia" lbl="Aparência"/>
       </div>
 
@@ -1275,6 +1414,27 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
       )}
 
       {/* ITEMS & CATEGORIES */}
+      {section==="tags"&&(
+        <div>
+          <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:4}}>Tags</div>
+          <div style={{...mono,fontSize:11,color:T.inkLL,marginBottom:16}}>
+            Gerencie as tags disponíveis para classificar as unidades do enxoval.
+          </div>
+
+          {/* existing tags */}
+          {allTags(customTags).map(tag=>(
+            <TagManagerRow key={tag.id} tag={tag}
+              isPreset={PRESET_TAGS.some(p=>p.id===tag.id)}
+              onEdit={(newLabel,newColor)=>onEditTag(tag.id,newLabel,newColor)}
+              onDelete={()=>onDeleteTag(tag.id)}
+              accent={accent}/>
+          ))}
+
+          {/* add new tag */}
+          <AddTagForm onAdd={onCreateTag} accent={accent}/>
+        </div>
+      )}
+
       {section==="aparencia"&&(
         <div>
           <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:4}}>Aparência</div>
@@ -1378,24 +1538,9 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
             :catItems.map(item=>{
               const pm=getPrio(priorities,item.priority);
               return (
-                <div key={item.id} style={{
-                  display:"flex",alignItems:"center",gap:8,padding:"9px 11px",marginBottom:4,
-                  background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:4
-                }}>
-                  <div style={{flex:1}}>
-                    <div style={{...serif,fontSize:13,color:T.ink,fontStyle:"italic"}}>{item.name}</div>
-                    <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
-                      <Chip label={pm.label} color={pm.color} bg={pm.bg} xs/>
-                      {item.sizes.map((s,i)=>(
-                        <span key={i} style={{...mono,fontSize:11,color:T.inkLL,background:T.bgSurf,borderRadius:2,padding:"1px 5px"}}>
-                          {s.tam!=="—"?`${s.tam}×${s.qty}`:`×${s.qty}`}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <button onClick={()=>{if(confirm(`Remover "${item.name}"?`))onDeleteItem(item.id);}}
-                    style={{background:"none",border:"none",color:T.ghost,cursor:"pointer",fontSize:13,padding:4}}>✕</button>
-                </div>
+                <ManagerItemRow key={item.id} item={item} pm={pm}
+                  onDelete={()=>{if(confirm(`Remover "${item.name}"?`))onDeleteItem(item.id);}}
+                  onUpdateSizes={sizes=>onUpdateItem(item.id,{...item,sizes})}/>
               );
             })
           }
@@ -1544,6 +1689,15 @@ export default function App({ user, onLogout }) {
 
   const updateEntry   = useCallback((key,val)=>{ update(prev=>({...prev,entries:{...prev.entries,[key]:val}})); },[]);
   const createTag     = useCallback(t=>{ update(prev=>({...prev,customTags:[...(prev.customTags||[]),t]})); },[]);
+  const deleteTag     = useCallback(id=>{ update(prev=>({...prev,customTags:(prev.customTags||[]).filter(t=>t.id!==id)})); },[]);
+  const editTag       = useCallback((id,label,color)=>{
+    const r=parseInt(color.slice(1,3),16),g=parseInt(color.slice(3,5),16),b=parseInt(color.slice(5,7),16);
+    update(prev=>({
+      ...prev,
+      customTags:(prev.customTags||[]).map(t=>t.id===id?{...t,label,color,bg:`rgba(${r},${g},${b},0.15)`}:t),
+      // also update preset tags if editing one
+    }));
+  },[]);
   const addCat        = useCallback(cat=>{ update(prev=>({...prev,categories:[...prev.categories,cat]})); },[]);
   const deleteCat     = useCallback(id=>{ update(prev=>({...prev,categories:prev.categories.filter(c=>c.id!==id)})); },[]);
   const addItem       = useCallback(item=>{
@@ -1691,12 +1845,16 @@ export default function App({ user, onLogout }) {
         )}
         {tab==="gerenciar"&&(
           <Manager categories={categories} items={items} priorities={priorities}
-            accent={accent} isDark={isDark}
+            customTags={customTags} accent={accent} isDark={isDark}
             onAddCat={addCat} onDeleteCat={deleteCat}
             onAddItem={addItem} onDeleteItem={deleteItem}
             onSetPriorities={setPriorities}
             onToggleDark={toggleDark}
-            onShowTheme={()=>setShowTheme(true)}/>
+            onShowTheme={()=>setShowTheme(true)}
+            onCreateTag={createTag}
+            onDeleteTag={deleteTag}
+            onEditTag={editTag}
+            onUpdateItem={updateItem}/>
         )}
       </div>
 
