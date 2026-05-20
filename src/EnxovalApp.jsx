@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { supabase } from "./supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THEME SYSTEM — Midnight Garden + 5 accent palettes
@@ -206,11 +207,29 @@ function buildInitialApp(accentId="verde") {
 function makeUnit() { return { photo:null, noPhoto:false, tags:[], note:"", price:"" }; }
 function unitDone(u) { return !!u.photo || u.noPhoto; }
 
-async function loadApp() {
-  try { const r = await window.storage.get("enxoval_mg1"); return r ? JSON.parse(r.value) : buildInitialApp(); }
-  catch { return buildInitialApp(); }
+// ── Supabase persistence ──────────────────────────────────────────────────────
+// Data is stored per-user in Supabase so it syncs across devices
+async function loadApp(userId) {
+  try {
+    const { data, error } = await supabase
+      .from("app_data")
+      .select("data")
+      .eq("user_id", userId)
+      .single();
+    if (error || !data) return buildInitialApp();
+    return { ...buildInitialApp(), ...JSON.parse(data.data) };
+  } catch { return buildInitialApp(); }
 }
-async function saveApp(s) { try { await window.storage.set("enxoval_mg1", JSON.stringify(s)); } catch {} }
+
+async function saveApp(state, userId) {
+  try {
+    const payload = JSON.stringify(state);
+    await supabase.from("app_data").upsert(
+      { user_id: userId, data: payload, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
+  } catch(e) { console.error("saveApp error:", e); }
+}
 
 function fileToDataUrl(f) {
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
@@ -242,7 +261,7 @@ function Chip({ label, color, bg, onRemove, xs }) {
       whiteSpace:"nowrap"
     }}>
       {label}
-      {onRemove && <span onClick={e=>{e.stopPropagation();onRemove();}} style={{cursor:"pointer",opacity:.5,fontSize:8}}>×</span>}
+      {onRemove && <span onClick={e=>{e.stopPropagation();onRemove();}} style={{cursor:"pointer",opacity:.5,fontSize:11}}>×</span>}
     </span>
   );
 }
@@ -253,7 +272,7 @@ function TamBadge({ tam }) {
     <span style={{
       ...mono, background:s.bg, color:s.color,
       border:`1px solid ${s.border}`, borderRadius:3,
-      padding:"1px 7px", fontSize:9, fontWeight:700,
+      padding:"1px 7px", fontSize:11, fontWeight:700,
       minWidth:24, textAlign:"center", flexShrink:0
     }}>{tam}</span>
   );
@@ -275,7 +294,7 @@ function ProgressRing({ pct, size=38, stroke=3, accent }) {
       </svg>
       <div style={{
         position:"absolute",inset:0,display:"flex",alignItems:"center",
-        justifyContent:"center",...mono,fontSize:8,fontWeight:700,
+        justifyContent:"center",...mono,fontSize:11,fontWeight:700,
         color:done?T.success:accent
       }}>{done?"✓":`${pct}%`}</div>
     </div>
@@ -326,7 +345,7 @@ function TagPicker({ selected, customTags, onToggle, onCreateTag }) {
   };
   return (
     <div>
-      <div style={{...mono,fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Tags</div>
+      <div style={{...mono,fontSize:10,letterSpacing:1,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Tags</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:4}}>
         {allTags(customTags).map(tag=>{
           const on=selected.includes(tag.id);
@@ -334,7 +353,7 @@ function TagPicker({ selected, customTags, onToggle, onCreateTag }) {
             <button key={tag.id} onClick={()=>onToggle(tag.id)} style={{
               background:on?tag.color:tag.color+"20", color:on?"#111":tag.color,
               border:`1px solid ${tag.color}55`, borderRadius:3,
-              padding:"2px 9px", ...mono, fontSize:9, letterSpacing:.7,
+              padding:"2px 9px", ...mono, fontSize:11, letterSpacing:.7,
               textTransform:"uppercase", cursor:"pointer", transition:"all .15s"
             }}>{tag.label}</button>
           );
@@ -342,7 +361,7 @@ function TagPicker({ selected, customTags, onToggle, onCreateTag }) {
         <button onClick={()=>setCreating(x=>!x)} style={{
           background:"transparent", color:T.inkLL,
           border:`1px dashed ${T.border}`, borderRadius:3,
-          padding:"2px 9px", ...mono, fontSize:9, letterSpacing:.7,
+          padding:"2px 9px", ...mono, fontSize:11, letterSpacing:.7,
           textTransform:"uppercase", cursor:"pointer"
         }}>+ Nova</button>
       </div>
@@ -357,7 +376,7 @@ function TagPicker({ selected, customTags, onToggle, onCreateTag }) {
           <input type="color" value={col} onChange={e=>setCol(e.target.value)}
             style={{width:28,height:28,border:"none",borderRadius:3,cursor:"pointer",padding:0,background:"transparent"}}/>
           <button onClick={create} style={{background:col,color:"#111",border:"none",
-            borderRadius:3,padding:"4px 10px",...mono,fontSize:9,fontWeight:700,cursor:"pointer"}}>Ok</button>
+            borderRadius:3,padding:"4px 10px",...mono,fontSize:11,fontWeight:700,cursor:"pointer"}}>Ok</button>
           <button onClick={()=>setCreating(false)} style={{background:"transparent",
             color:T.inkLL,border:"none",cursor:"pointer",...mono,fontSize:10}}>✕</button>
         </div>
@@ -391,16 +410,16 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
           background:done?accent:T.bgSurf,
           border:`1px solid ${done?accent:T.border}`,
           display:"flex",alignItems:"center",justifyContent:"center",
-          ...mono,fontSize:9,color:done?"#111":T.inkLL,fontWeight:700
+          ...mono,fontSize:11,color:done?"#111":T.inkLL,fontWeight:700
         }}>{done?"✓":index+1}</div>
-        <span style={{...serif,fontSize:12,color:T.inkL,flex:1,fontStyle:"italic"}}>
+        <span style={{...serif,fontSize:14,color:T.inkL,flex:1,fontStyle:"italic"}}>
           Unidade {index+1}
-          {done&&<span style={{...mono,fontSize:9,color:accent,marginLeft:8,letterSpacing:.5}}>
+          {done&&<span style={{...mono,fontSize:11,color:accent,marginLeft:8,letterSpacing:.5}}>
             {unit.photo?"· foto":"· sem foto"}
           </span>}
         </span>
         <button onClick={onRemove} style={{background:"none",border:"none",
-          color:T.inkLL,cursor:"pointer",...mono,fontSize:9,letterSpacing:.5,textTransform:"uppercase"}}>remover</button>
+          color:T.inkLL,cursor:"pointer",...mono,fontSize:10,letterSpacing:.5,textTransform:"uppercase"}}>remover</button>
       </div>
 
       {/* price per unit — the actual individual unit price */}
@@ -409,10 +428,10 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
         background:T.bgSurf,border:`1px solid ${T.border}`,
         borderRadius:4,padding:"7px 10px",marginBottom:10
       }}>
-        <span style={{...mono,fontSize:8,color:T.inkLL,letterSpacing:1,textTransform:"uppercase",flexShrink:0}}>
+        <span style={{...mono,fontSize:10,color:T.inkLL,letterSpacing:.8,textTransform:"uppercase",flexShrink:0}}>
           Valor pago
         </span>
-        <span style={{...mono,fontSize:9,color:T.inkLL,flexShrink:0}}>R$</span>
+        <span style={{...mono,fontSize:11,color:T.inkLL,flexShrink:0}}>R$</span>
         <input type="number" step="0.01"
           value={unit.price||""}
           onChange={e=>onChange({...unit,price:e.target.value})}
@@ -423,7 +442,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
             minWidth:0
           }}/>
         {parseFloat(unit.price)>0&&(
-          <span style={{...mono,fontSize:8,color:accent,flexShrink:0}}>
+          <span style={{...mono,fontSize:11,color:accent,flexShrink:0}}>
             {fmtBRL(unit.price)}
           </span>
         )}
@@ -445,7 +464,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
             <button onClick={e=>{e.stopPropagation();onChange({...unit,photo:null});}} style={{
               position:"absolute",top:3,right:3,background:T.bg+"CC",
               border:"none",borderRadius:"50%",color:T.inkL,
-              width:16,height:16,cursor:"pointer",fontSize:8,
+              width:16,height:16,cursor:"pointer",fontSize:11,
               display:"flex",alignItems:"center",justifyContent:"center"
             }}>✕</button>
           )}
@@ -454,14 +473,14 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
           {!unit.photo&&(
             <button onClick={()=>inputRef.current.click()} style={{
               background:accent+"22",color:accent,border:`1px solid ${accent}44`,
-              borderRadius:4,padding:"7px 0",...mono,fontSize:9,
+              borderRadius:4,padding:"7px 0",...mono,fontSize:11,
               letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
             }}>◫ Adicionar foto</button>
           )}
           {unit.photo&&(
             <button onClick={()=>inputRef.current.click()} style={{
               background:T.bgSurf,color:T.inkL,border:`1px solid ${T.border}`,
-              borderRadius:4,padding:"7px 0",...mono,fontSize:9,
+              borderRadius:4,padding:"7px 0",...mono,fontSize:11,
               letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
             }}>⟳ Trocar foto</button>
           )}
@@ -469,7 +488,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
             background:unit.noPhoto?accent+"22":"transparent",
             color:unit.noPhoto?accent:T.inkLL,
             border:`1px ${unit.noPhoto?"solid":"dashed"} ${unit.noPhoto?accent+"44":T.border}`,
-            borderRadius:4,padding:"7px 0",...mono,fontSize:9,
+            borderRadius:4,padding:"7px 0",...mono,fontSize:11,
             letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .2s"
           }}>{unit.noPhoto?"✓ Sem foto (ok)":"○ Marcar sem foto"}</button>
         </div>
@@ -516,11 +535,11 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
         {sz.tam!=="—"&&<TamBadge tam={sz.tam}/>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-            <span style={{...mono,fontSize:9,color:T.inkLL}}>{bought} / {sz.qty}</span>
+            <span style={{...mono,fontSize:11,color:T.inkLL}}>{bought} / {sz.qty}</span>
             <div style={{display:"flex",gap:5}}>
-              {photoN>0  &&<span style={{...mono,fontSize:8,color:accent}}>◫{photoN}</span>}
-              {noPhotoN>0&&<span style={{...mono,fontSize:8,color:T.success}}>○{noPhotoN}</span>}
-              {pending>0 &&<span style={{...mono,fontSize:8,color:T.amber}}>◌{pending}</span>}
+              {photoN>0  &&<span style={{...mono,fontSize:11,color:accent}}>◫{photoN}</span>}
+              {noPhotoN>0&&<span style={{...mono,fontSize:11,color:T.success}}>○{noPhotoN}</span>}
+              {pending>0 &&<span style={{...mono,fontSize:10,color:T.amber}}>◌{pending}</span>}
             </div>
           </div>
           <div style={{height:2,background:T.bgSurf,borderRadius:99,overflow:"hidden"}}>
@@ -531,14 +550,14 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
           {tagObjs.length>0&&(
             <div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}}>
               {tagObjs.slice(0,3).map(t=><Chip key={t.id} label={t.label} color={t.color} xs/>)}
-              {tagObjs.length>3&&<span style={{...mono,fontSize:8,color:T.inkLL}}>+{tagObjs.length-3}</span>}
+              {tagObjs.length>3&&<span style={{...mono,fontSize:11,color:T.inkLL}}>+{tagObjs.length-3}</span>}
             </div>
           )}
         </div>
         {bought<sz.qty&&(
           <button onClick={e=>{e.stopPropagation();upUnits([...units,makeUnit()]);}} style={{
             background:accent+"22",color:accent,border:`1px solid ${accent}44`,
-            borderRadius:3,padding:"3px 9px",...mono,fontSize:8,
+            borderRadius:3,padding:"3px 9px",...mono,fontSize:11,
             letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",flexShrink:0
           }}>+ Reg.</button>
         )}
@@ -548,7 +567,7 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
       {open&&(
         <div style={{paddingTop:10}}>
           {units.length===0
-            ?<div style={{textAlign:"center",padding:"14px",...mono,fontSize:9,
+            ?<div style={{textAlign:"center",padding:"14px",...mono,fontSize:11,
                color:T.ghost,letterSpacing:1}}>
                Clique em + REG. para registrar a 1ª unidade
              </div>
@@ -564,19 +583,19 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
             <button onClick={()=>upUnits([...units,makeUnit()])} style={{
               width:"100%",padding:"8px",background:accent+"22",
               color:accent,border:`1px solid ${accent}44`,borderRadius:4,
-              ...mono,fontSize:9,letterSpacing:.8,textTransform:"uppercase",
+              ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",
               cursor:"pointer",marginTop:2
             }}>+ Registrar unidade {bought+1} de {sz.qty}</button>
           )}
           {bought>=sz.qty&&pending>0&&(
             <div style={{background:T.amberDim,border:`1px solid ${T.amber}44`,
-              borderRadius:3,padding:"7px 11px",...mono,fontSize:9,color:T.amber,marginTop:3}}>
+              borderRadius:3,padding:"7px 11px",...mono,fontSize:11,color:T.amber,marginTop:3}}>
               ◌ {pending} unidade{pending>1?"s":""} aguardam conclusão
             </div>
           )}
           {full&&(
             <div style={{background:T.success+"15",border:`1px solid ${T.success}44`,
-              borderRadius:3,padding:"7px 11px",...mono,fontSize:9,color:T.success,marginTop:3}}>
+              borderRadius:3,padding:"7px 11px",...mono,fontSize:11,color:T.success,marginTop:3}}>
               ✓ {sz.qty} unidade{sz.qty>1?"s":""} registradas
             </div>
           )}
@@ -615,14 +634,14 @@ function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCrea
         onClick={()=>setOpen(x=>!x)}>
         <ProgressRing pct={pct} accent={accent}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{...serif,fontSize:15,color:T.ink,fontWeight:300,marginBottom:4,lineHeight:1.2,fontStyle:"italic"}}>
+          <div style={{...serif,fontSize:16,color:T.ink,fontWeight:400,marginBottom:4,lineHeight:1.2,fontStyle:"italic"}}>
             {item.name}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
             <Chip label={pm.label} color={pm.color} bg={pm.bg} xs/>
-            <span style={{...mono,fontSize:8,color:T.inkLL}}>{totalBought}/{totalSug} un</span>
-            {pending>0&&<span style={{...mono,fontSize:8,color:T.amber}}>◌{pending}</span>}
-            {unitSpent>0&&<span style={{...mono,fontSize:8,color:accent}}>{fmtBRL(unitSpent)}</span>}
+            <span style={{...mono,fontSize:10,color:T.inkLL}}>{totalBought}/{totalSug} un</span>
+            {pending>0&&<span style={{...mono,fontSize:11,color:T.amber}}>◌{pending}</span>}
+            {unitSpent>0&&<span style={{...mono,fontSize:11,color:accent}}>{fmtBRL(unitSpent)}</span>}
             {tagObjs.slice(0,2).map(t=><Chip key={t.id} label={t.label} color={t.color} xs/>)}
           </div>
         </div>
@@ -687,7 +706,7 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
             padding:"3px 11px",borderRadius:3,border:"none",
             background:filterPrio===id?col:bg,
             color:filterPrio===id?"#111":col,
-            ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",
+            ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",
             cursor:"pointer",transition:"all .15s"
           }}>{lbl}</button>
         ))}
@@ -699,14 +718,14 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
           padding:"3px 10px",borderRadius:3,border:"none",whiteSpace:"nowrap",
           background:!filterCat?accent:T.bgSurf,
           color:!filterCat?"#111":T.inkL,
-          ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
+          ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
         }}>Todas</button>
         {categories.map(cat=>(
           <button key={cat.id} onClick={()=>setFilterCat(filterCat===cat.id?null:cat.id)} style={{
             padding:"3px 10px",borderRadius:3,border:"none",whiteSpace:"nowrap",
             background:filterCat===cat.id?accent:T.bgSurf,
             color:filterCat===cat.id?"#111":T.inkL,
-            ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
+            ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"
           }}>{cat.label}</button>
         ))}
       </div>
@@ -719,7 +738,7 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
           <div key={cat.id} style={{marginBottom:22}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
               <div style={{height:1,flex:1,background:T.border}}/>
-              <span style={{...mono,fontSize:9,letterSpacing:2,color:accent,textTransform:"uppercase"}}>{cat.label}</span>
+              <span style={{...mono,fontSize:11,letterSpacing:2,color:accent,textTransform:"uppercase"}}>{cat.label}</span>
               <div style={{height:1,flex:1,background:T.border}}/>
             </div>
             {cat.items.map(item=>(
@@ -825,10 +844,10 @@ function Finance({ categories, items, entries, priorities, accent,
         <div style={{position:"absolute",top:-30,right:-30,width:100,height:100,background:accent+"15",borderRadius:"50%"}}/>
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
           <div>
-            <div style={{...mono,fontSize:8,letterSpacing:2,textTransform:"uppercase",color:T.inkLL,marginBottom:5}}>Total investido</div>
+            <div style={{...mono,fontSize:11,letterSpacing:2,textTransform:"uppercase",color:T.inkLL,marginBottom:5}}>Total investido</div>
             <div style={{...serif,fontSize:32,color:accent,fontWeight:300,letterSpacing:-1,fontStyle:"italic"}}>{fmtBRL(grandTotal)}</div>
             {grandBudget>0&&(
-              <div style={{...mono,fontSize:8,color:T.inkLL,marginTop:4}}>
+              <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:4}}>
                 de {fmtBRL(grandBudget)} orçados · {pct}% executado
               </div>
             )}
@@ -837,7 +856,7 @@ function Finance({ categories, items, entries, priorities, accent,
             background:showBudgetPanel?accent:accent+"22",
             color:showBudgetPanel?"#111":accent,
             border:`1px solid ${accent}44`,borderRadius:4,
-            ...mono,fontSize:8,letterSpacing:1,textTransform:"uppercase",
+            ...mono,fontSize:11,letterSpacing:1,textTransform:"uppercase",
             padding:"6px 11px",cursor:"pointer",flexShrink:0,marginTop:2,transition:"all .2s"
           }}>
             {grandBudget>0?"Editar orçamento":"Definir orçamento"}
@@ -854,7 +873,7 @@ function Finance({ categories, items, entries, priorities, accent,
           background:T.bgCard,border:`1px solid ${accent}33`,
           borderRadius:6,padding:"14px",marginBottom:14
         }}>
-          <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:accent,marginBottom:10}}>Definir orçamento</div>
+          <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:accent,marginBottom:10}}>Definir orçamento</div>
 
           {/* mode toggle */}
           <div style={{display:"flex",gap:0,marginBottom:12,border:`1px solid ${T.border}`,borderRadius:3,overflow:"hidden"}}>
@@ -863,7 +882,7 @@ function Finance({ categories, items, entries, priorities, accent,
                 flex:1,padding:"7px 0",border:"none",cursor:"pointer",
                 background:budgetMode===id?accent:T.bgSurf,
                 color:budgetMode===id?"#111":T.inkL,
-                ...mono,fontSize:8,letterSpacing:.7,textTransform:"uppercase",transition:"all .15s"
+                ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",transition:"all .15s"
               }}>{lbl}</button>
             ))}
           </div>
@@ -875,7 +894,7 @@ function Finance({ categories, items, entries, priorities, accent,
                 onChange={e=>setEditBudgetTotal(e.target.value)}
                 placeholder="Ex: 8000"
                 style={{flex:1,background:"transparent",border:"none",...mono,fontSize:18,color:accent,outline:"none",fontWeight:500}}/>
-              <span style={{...mono,fontSize:8,color:T.inkLL,flexShrink:0}}>orçamento total</span>
+              <span style={{...mono,fontSize:11,color:T.inkLL,flexShrink:0}}>orçamento total</span>
             </div>
           )}
 
@@ -884,7 +903,7 @@ function Finance({ categories, items, entries, priorities, accent,
               {categories.map(cat=>(
                 <div key={cat.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${T.borderL}`}}>
                   <span style={{...serif,fontSize:12,color:T.inkL,fontStyle:"italic",flex:1}}>{cat.label}</span>
-                  <span style={{...mono,fontSize:9,color:T.inkLL,flexShrink:0}}>R$</span>
+                  <span style={{...mono,fontSize:11,color:T.inkLL,flexShrink:0}}>R$</span>
                   <input type="number" step="50"
                     value={editBudgetCat[cat.id]||""}
                     onChange={e=>setEditBudgetCat(prev=>({...prev,[cat.id]:e.target.value}))}
@@ -899,11 +918,11 @@ function Finance({ categories, items, entries, priorities, accent,
           <div style={{display:"flex",gap:6}}>
             <button onClick={saveBudget} style={{
               flex:1,padding:"8px",background:accent,color:"#111",border:"none",borderRadius:3,
-              ...mono,fontSize:9,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer",fontWeight:700
+              ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer",fontWeight:700
             }}>Salvar</button>
             <button onClick={()=>setShowBudgetPanel(false)} style={{
               padding:"8px 12px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,
-              ...mono,fontSize:9,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
+              ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
             }}>Cancelar</button>
           </div>
         </div>
@@ -913,9 +932,9 @@ function Finance({ categories, items, entries, priorities, accent,
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:16}}>
         {buckets.map(bk=>(
           <div key={bk.id} style={{background:bk.bg,border:`1px solid ${bk.color}33`,borderRadius:5,padding:"11px 9px",textAlign:"center"}}>
-            <div style={{...mono,fontSize:7,letterSpacing:.7,textTransform:"uppercase",color:bk.color,marginBottom:3}}>{bk.label}</div>
+            <div style={{...mono,fontSize:10,letterSpacing:.7,textTransform:"uppercase",color:bk.color,marginBottom:3}}>{bk.label}</div>
             <div style={{...serif,fontSize:15,color:bk.color,fontWeight:300,fontStyle:"italic"}}>{fmtBRL(bk.total)}</div>
-            {bk.est>0&&bk.est!==bk.total&&<div style={{...mono,fontSize:7,color:T.inkLL,marginTop:2}}>{fmtBRL(bk.est)} est.</div>}
+            {bk.est>0&&bk.est!==bk.total&&<div style={{...mono,fontSize:10,color:T.inkLL,marginTop:2}}>{fmtBRL(bk.est)} est.</div>}
           </div>
         ))}
       </div>
@@ -934,7 +953,7 @@ function Finance({ categories, items, entries, priorities, accent,
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:4}}>
                   <span style={{...serif,fontSize:14,color:T.ink,fontStyle:"italic"}}>{cat.label}</span>
-                  <span style={{...mono,fontSize:8,color:T.inkLL}}>
+                  <span style={{...mono,fontSize:11,color:T.inkLL}}>
                     {cd.items.filter(r=>parseFloat(r.price)>0).length}/{cd.items.length} c/ preço
                   </span>
                 </div>
@@ -944,7 +963,7 @@ function Finance({ categories, items, entries, priorities, accent,
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
                 <div style={{...serif,fontSize:14,color:T.ink,fontStyle:"italic"}}>{fmtBRL(cd.total)}</div>
-                {cBudget>0&&<div style={{...mono,fontSize:8,color:T.inkLL}}>{fmtBRL(cBudget)} orçado</div>}
+                {cBudget>0&&<div style={{...mono,fontSize:11,color:T.inkLL}}>{fmtBRL(cBudget)} orçado</div>}
               </div>
               <span style={{color:T.ghost,fontSize:10,transform:exp?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}>▾</span>
             </div>
@@ -963,7 +982,7 @@ function Finance({ categories, items, entries, priorities, accent,
                     }}>
                       <div style={{flex:1}}>
                         <div style={{...serif,fontSize:12,color:T.inkL,fontStyle:"italic"}}>{item.name}</div>
-                        {itemSpent>0&&<div style={{...mono,fontSize:8,color:T.inkLL,marginTop:1}}>{bought}/{totalQty} compradas · {fmtBRL(itemSpent)} gasto</div>}
+                        {itemSpent>0&&<div style={{...mono,fontSize:11,color:T.inkLL,marginTop:1}}>{bought}/{totalQty} compradas · {fmtBRL(itemSpent)} gasto</div>}
                       </div>
                       <Chip label={pm.label} color={pm.color} bg={pm.bg} xs/>
                       <div style={{textAlign:"right",flexShrink:0}}>
@@ -981,7 +1000,7 @@ function Finance({ categories, items, entries, priorities, accent,
       })}
 
       {grandTotal===0&&(
-        <div style={{textAlign:"center",padding:"32px",...mono,fontSize:9,color:T.ghost,letterSpacing:1.5,border:`1px dashed ${T.border}`,borderRadius:6}}>
+        <div style={{textAlign:"center",padding:"32px",...mono,fontSize:11,color:T.ghost,letterSpacing:1.5,border:`1px dashed ${T.border}`,borderRadius:6}}>
           Cadastre preços nos itens do Checklist<br/>para visualizar o resumo financeiro
         </div>
       )}
@@ -1027,14 +1046,14 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
     <button onClick={onClick} style={{
       padding:"3px 10px",borderRadius:3,border:`1px solid ${color}44`,
       background:active?color:color+"30",color:active?"#111":color,
-      ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"
+      ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"
     }}>{label}</button>
   );
 
   if(allPhotos.length===0) return (
     <div style={{textAlign:"center",padding:"60px 20px",color:T.ghost}}>
       <div style={{fontSize:40,marginBottom:12,opacity:.2}}>◫</div>
-      <div style={{...mono,fontSize:9,letterSpacing:2}}>Nenhum registro ainda</div>
+      <div style={{...mono,fontSize:11,letterSpacing:2}}>Nenhum registro ainda</div>
     </div>
   );
 
@@ -1045,28 +1064,28 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
           display:"flex",alignItems:"center",gap:5,
           background:showF?accent:accent+"18",color:showF?"#111":accent,
           border:`1px solid ${accent}44`,borderRadius:4,padding:"6px 12px",
-          ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .2s"
+          ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .2s"
         }}>
           ⊞ Filtros{activeF>0&&` (${activeF})`}
         </button>
-        <span style={{...mono,fontSize:9,color:T.inkLL}}>{filtered.length} de {allPhotos.length}</span>
+        <span style={{...mono,fontSize:11,color:T.inkLL}}>{filtered.length} de {allPhotos.length}</span>
       </div>
 
       {showF&&(
         <div style={{background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:5,padding:"12px 13px",marginBottom:13}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:9}}>
-            <span style={{...mono,fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:accent}}>Filtros</span>
-            <button onClick={()=>setFilters({})} style={{...mono,fontSize:9,color:T.inkLL,background:"none",border:"none",cursor:"pointer"}}>Limpar</button>
+            <span style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:accent}}>Filtros</span>
+            <button onClick={()=>setFilters({})} style={{...mono,fontSize:11,color:T.inkLL,background:"none",border:"none",cursor:"pointer"}}>Limpar</button>
           </div>
           {[
             ["Foto",<div style={{display:"flex",gap:4}}><FPill label="Com foto" active={(filters.ps||[]).includes("foto")} onClick={()=>toggle("ps","foto")}/><FPill label="Sem foto" active={(filters.ps||[]).includes("sem")} onClick={()=>toggle("ps","sem")} color={T.success}/></div>],
             ["Tamanho",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{allTams.map(t=>{const ts=TAM[t]||TAM["—"];return<FPill key={t} label={t} active={(filters.tams||[]).includes(t)} onClick={()=>toggle("tams",t)} color={ts.color}/>;})}</div>],
             ["Prioridade",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{priorities.map(p=><FPill key={p.id} label={p.label} active={(filters.prios||[]).includes(p.id)} onClick={()=>toggle("prios",p.id)} color={p.color}/>)}</div>],
             ["Categoria",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{categories.map(c=><FPill key={c.id} label={c.label} active={(filters.cats||[]).includes(c.id)} onClick={()=>toggle("cats",c.id)}/>)}</div>],
-            ["Tags",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{allTags(customTags).map(t=><button key={t.id} onClick={()=>toggle("tags",t.id)} style={{padding:"2px 9px",borderRadius:3,border:`1px solid ${t.color}55`,background:(filters.tags||[]).includes(t.id)?t.color:t.color+"18",color:(filters.tags||[]).includes(t.id)?"#111":t.color,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}</div>],
+            ["Tags",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{allTags(customTags).map(t=><button key={t.id} onClick={()=>toggle("tags",t.id)} style={{padding:"2px 9px",borderRadius:3,border:`1px solid ${t.color}55`,background:(filters.tags||[]).includes(t.id)?t.color:t.color+"18",color:(filters.tags||[]).includes(t.id)?"#111":t.color,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}</div>],
           ].map(([lbl,content])=>(
             <div key={lbl} style={{marginBottom:9}}>
-              <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:5}}>{lbl}</div>
+              <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:5}}>{lbl}</div>
               {content}
             </div>
           ))}
@@ -1074,7 +1093,7 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
       )}
 
       {filtered.length===0
-        ?<div style={{textAlign:"center",padding:"36px",...mono,fontSize:9,color:T.ghost}}>Nenhuma foto para esses filtros</div>
+        ?<div style={{textAlign:"center",padding:"36px",...mono,fontSize:11,color:T.ghost}}>Nenhuma foto para esses filtros</div>
         :(
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(145px,1fr))",gap:10}}>
             {filtered.map((p,i)=>{
@@ -1086,14 +1105,14 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
                   <div style={{aspectRatio:"1",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
                     {p.src
                       ?<img src={p.src} alt={p.itemName} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                      :<div style={{textAlign:"center",color:T.ghost}}><div style={{fontSize:28,opacity:.25}}>○</div><div style={{...mono,fontSize:7,letterSpacing:1,marginTop:4}}>sem foto</div></div>
+                      :<div style={{textAlign:"center",color:T.ghost}}><div style={{fontSize:28,opacity:.25}}>○</div><div style={{...mono,fontSize:10,letterSpacing:1,marginTop:4}}>sem foto</div></div>
                     }
-                    {p.tam!=="—"&&<span style={{position:"absolute",top:5,left:5,...mono,background:ts.bg,color:ts.color,fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:2}}>{p.tam}</span>}
-                    <span style={{position:"absolute",bottom:4,right:4,...mono,background:T.bg+"BB",color:T.inkLL,fontSize:7,padding:"1px 4px",borderRadius:2}}>#{p.unitIndex}</span>
+                    {p.tam!=="—"&&<span style={{position:"absolute",top:5,left:5,...mono,background:ts.bg,color:ts.color,fontSize:11,fontWeight:700,padding:"1px 5px",borderRadius:2}}>{p.tam}</span>}
+                    <span style={{position:"absolute",bottom:4,right:4,...mono,background:T.bg+"BB",color:T.inkLL,fontSize:10,padding:"1px 4px",borderRadius:2}}>#{p.unitIndex}</span>
                   </div>
                   <div style={{padding:"8px 9px"}}>
                     <div style={{...serif,fontSize:12,color:T.ink,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{p.itemName}</div>
-                    <div style={{...mono,fontSize:8,color:T.inkLL,marginBottom:4}}>{p.catLabel}</div>
+                    <div style={{...mono,fontSize:11,color:T.inkLL,marginBottom:4}}>{p.catLabel}</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
                       <Chip label={pm.label} color={pm.color} bg={pm.bg} xs/>
                       {tgs.slice(0,2).map(t=><Chip key={t.id} label={t.label} color={t.color} xs/>)}
@@ -1158,7 +1177,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
       flex:1,padding:"7px 0",border:"none",cursor:"pointer",
       background:section===id?accent:T.bgSurf,
       color:section===id?"#111":T.inkL,
-      ...mono,fontSize:9,letterSpacing:.8,textTransform:"uppercase",transition:"all .15s"
+      ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",transition:"all .15s"
     }}>{lbl}</button>
   );
 
@@ -1174,7 +1193,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
       {section==="prioridades"&&(
         <div>
           <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:4}}>Prioridades</div>
-          <div style={{...mono,fontSize:8,color:T.inkLL,letterSpacing:.5,marginBottom:10}}>
+          <div style={{...mono,fontSize:11,color:T.inkLL,letterSpacing:.5,marginBottom:10}}>
             Personalize as prioridades dos itens. <span style={{color:accent}}>Essencial</span> e <span style={{color:T.amber}}>Desejável</span> são fixos — podem ter a cor ajustada, mas não podem ser renomeados ou removidos (são usados nos totais de Finanças).
           </div>
           {priorities.map(p=>{
@@ -1188,8 +1207,8 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
               {editPrioId===p.id?(
                 <div style={{padding:"11px 12px",display:"flex",flexDirection:"column",gap:7}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                    <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL}}>Editar cor</div>
-                    {locked&&<span style={{...mono,fontSize:7,color:p.color,letterSpacing:.5}}>— nome protegido</span>}
+                    <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL}}>Editar cor</div>
+                    {locked&&<span style={{...mono,fontSize:10,color:p.color,letterSpacing:.5}}>— nome protegido</span>}
                   </div>
                   <div style={{display:"flex",gap:7,alignItems:"center"}}>
                     {locked
@@ -1203,21 +1222,21 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                       style={{width:32,height:32,border:"none",borderRadius:3,cursor:"pointer",padding:0,background:"transparent"}}/>
                   </div>
                   <div style={{display:"flex",gap:5}}>
-                    <button onClick={saveEditPrio} style={{flex:1,padding:"7px",background:accent,color:"#111",border:"none",borderRadius:3,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Salvar</button>
-                    <button onClick={()=>setEditPrioId(null)} style={{padding:"7px 11px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"}}>Cancelar</button>
+                    <button onClick={saveEditPrio} style={{flex:1,padding:"7px",background:accent,color:"#111",border:"none",borderRadius:3,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Salvar</button>
+                    <button onClick={()=>setEditPrioId(null)} style={{padding:"7px 11px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"}}>Cancelar</button>
                   </div>
                 </div>
               ):(
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px"}}>
                   <div style={{width:9,height:9,borderRadius:"50%",background:p.color,flexShrink:0}}/>
                   <Chip label={p.label} color={p.color} bg={p.bg}/>
-                  {locked&&<span style={{...mono,fontSize:7,color:T.ghost,letterSpacing:.5}}>fixo</span>}
-                  <span style={{...mono,fontSize:8,color:T.inkLL,flex:1}}>
+                  {locked&&<span style={{...mono,fontSize:10,color:T.ghost,letterSpacing:.5}}>fixo</span>}
+                  <span style={{...mono,fontSize:11,color:T.inkLL,flex:1}}>
                     {items.filter(i=>i.priority===p.id).length} ite{items.filter(i=>i.priority===p.id).length!==1?"ns":"m"}
                   </span>
                   <button onClick={()=>{setEditPrioId(p.id);setEditLbl(p.label);setEditCol(p.color);}} style={{
                     background:T.bgSurf,color:T.inkL,border:`1px solid ${T.border}`,
-                    borderRadius:3,...mono,fontSize:8,letterSpacing:.5,textTransform:"uppercase",
+                    borderRadius:3,...mono,fontSize:11,letterSpacing:.5,textTransform:"uppercase",
                     padding:"2px 8px",cursor:"pointer"
                   }}>{locked?"Cor":"Editar"}</button>
                   {!locked&&(
@@ -1230,7 +1249,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
           })}
           {addingPrio?(
             <div style={{background:`${accent}0D`,border:`1px solid ${accent}33`,borderRadius:4,padding:"11px 12px",marginTop:7}}>
-              <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:accent,marginBottom:8}}>Nova prioridade</div>
+              <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:accent,marginBottom:8}}>Nova prioridade</div>
               <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:7}}>
                 <input autoFocus value={newPrioLbl} onChange={e=>setNewPrioLbl(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&addPrio()} placeholder="Nome…"
@@ -1240,8 +1259,8 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                   style={{width:32,height:32,border:"none",borderRadius:3,cursor:"pointer",padding:0,background:"transparent"}}/>
               </div>
               <div style={{display:"flex",gap:5}}>
-                <button onClick={addPrio} style={{flex:1,padding:"7px",background:accent,color:"#111",border:"none",borderRadius:3,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Criar</button>
-                <button onClick={()=>{setAddingPrio(false);setNewPrioLbl("");}} style={{padding:"7px 11px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"}}>Cancelar</button>
+                <button onClick={addPrio} style={{flex:1,padding:"7px",background:accent,color:"#111",border:"none",borderRadius:3,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Criar</button>
+                <button onClick={()=>{setAddingPrio(false);setNewPrioLbl("");}} style={{padding:"7px 11px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"}}>Cancelar</button>
               </div>
             </div>
           ):(
@@ -1249,7 +1268,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
               width:"100%",marginTop:6,padding:"8px",
               background:"transparent",color:T.inkLL,
               border:`1px dashed ${T.border}`,borderRadius:3,
-              ...mono,fontSize:9,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
+              ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
             }}>+ Nova prioridade</button>
           )}
         </div>
@@ -1259,12 +1278,12 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
       {section==="aparencia"&&(
         <div>
           <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:4}}>Aparência</div>
-          <div style={{...mono,fontSize:9,color:T.inkLL,letterSpacing:.5,marginBottom:18}}>
+          <div style={{...mono,fontSize:11,color:T.inkLL,letterSpacing:.5,marginBottom:18}}>
             Personalize o visual do app.
           </div>
 
           {/* Dark / Light */}
-          <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:8}}>Modo de exibição</div>
+          <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:8}}>Modo de exibição</div>
           <div style={{display:"flex",gap:8,marginBottom:22}}>
             {[
               [true,  "🌙", "Escuro", "Midnight Garden"],
@@ -1277,13 +1296,13 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
               }}>
                 <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
                 <div style={{...mono,fontSize:11,color:isDark===dark?accent:T.ink,fontWeight:isDark===dark?700:400,letterSpacing:.5}}>{label}</div>
-                <div style={{...mono,fontSize:8,color:T.inkLL,marginTop:2}}>{desc}</div>
+                <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:2}}>{desc}</div>
               </button>
             ))}
           </div>
 
           {/* Accent color */}
-          <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:8}}>Cor de destaque</div>
+          <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:8}}>Cor de destaque</div>
           <button onClick={onShowTheme} style={{
             width:"100%", padding:"14px",
             border:`1.5px solid ${T.border}`, borderRadius:6,
@@ -1298,7 +1317,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
             }}/>
             <div style={{textAlign:"left"}}>
               <div style={{...mono,fontSize:11,color:T.ink,fontWeight:600,letterSpacing:.5}}>Alterar cor</div>
-              <div style={{...mono,fontSize:9,color:T.inkLL,marginTop:2}}>Verde · Amarelo · Rosa · Azul · Lavanda</div>
+              <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:2}}>Verde · Amarelo · Rosa · Azul · Lavanda</div>
             </div>
             <div style={{marginLeft:"auto",color:T.inkLL,fontSize:14}}>›</div>
           </button>
@@ -1313,14 +1332,14 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                 padding:"4px 11px",borderRadius:3,border:"none",cursor:"pointer",
                 background:activeCat===cat.id?accent:T.bgSurf,
                 color:activeCat===cat.id?"#111":T.inkL,
-                ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",transition:"all .15s"
+                ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",transition:"all .15s"
               }}>{cat.label}</button>
             ))}
             {!addingCat&&(
               <button onClick={()=>setAddingCat(true)} style={{
                 padding:"4px 11px",borderRadius:3,border:`1px dashed ${T.border}`,
                 background:"transparent",color:T.inkLL,cursor:"pointer",
-                ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase"
+                ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase"
               }}>+ Categ.</button>
             )}
           </div>
@@ -1330,8 +1349,8 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                 onKeyDown={e=>{if(e.key==="Enter"&&newCatLabel.trim()){const id="cat_"+uid();onAddCat({id,label:newCatLabel.trim()});setNewCatLabel("");setAddingCat(false);setActiveCat(id);}}}
                 placeholder="Nome da categoria…"
                 style={{flex:1,background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:3,padding:"6px 9px",...serif,fontSize:13,color:T.ink,outline:"none"}}/>
-              <button onClick={()=>{if(!newCatLabel.trim())return;const id="cat_"+uid();onAddCat({id,label:newCatLabel.trim()});setNewCatLabel("");setAddingCat(false);setActiveCat(id);}} style={{background:accent,color:"#111",border:"none",borderRadius:3,padding:"6px 12px",...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Criar</button>
-              <button onClick={()=>{setAddingCat(false);setNewCatLabel("");}} style={{background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,padding:"6px 10px",...mono,fontSize:9,cursor:"pointer"}}>✕</button>
+              <button onClick={()=>{if(!newCatLabel.trim())return;const id="cat_"+uid();onAddCat({id,label:newCatLabel.trim()});setNewCatLabel("");setAddingCat(false);setActiveCat(id);}} style={{background:accent,color:"#111",border:"none",borderRadius:3,padding:"6px 12px",...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Criar</button>
+              <button onClick={()=>{setAddingCat(false);setNewCatLabel("");}} style={{background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,padding:"6px 10px",...mono,fontSize:11,cursor:"pointer"}}>✕</button>
             </div>
           )}
 
@@ -1348,14 +1367,14 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                   if(catItems.length>0){alert("Remova os itens antes de excluir.");return;}
                   if(confirm(`Excluir "${cat.label}"?`)){onDeleteCat(cat.id);setActiveCat(categories.find(c=>c.id!==cat.id)?.id||"");}
                 }} style={{background:"none",border:`1px solid ${T.rose}44`,borderRadius:3,
-                  color:T.rose,cursor:"pointer",...mono,fontSize:8,letterSpacing:.5,
+                  color:T.rose,cursor:"pointer",...mono,fontSize:11,letterSpacing:.5,
                   textTransform:"uppercase",padding:"3px 9px"}}>Excluir</button>
               </div>
             );
           })()}
 
           {catItems.length===0
-            ?<div style={{textAlign:"center",padding:"24px",...mono,fontSize:9,color:T.ghost,letterSpacing:1}}>Nenhum item nesta categoria</div>
+            ?<div style={{textAlign:"center",padding:"24px",...mono,fontSize:11,color:T.ghost,letterSpacing:1}}>Nenhum item nesta categoria</div>
             :catItems.map(item=>{
               const pm=getPrio(priorities,item.priority);
               return (
@@ -1368,7 +1387,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                     <div style={{display:"flex",gap:4,marginTop:3,flexWrap:"wrap"}}>
                       <Chip label={pm.label} color={pm.color} bg={pm.bg} xs/>
                       {item.sizes.map((s,i)=>(
-                        <span key={i} style={{...mono,fontSize:8,color:T.inkLL,background:T.bgSurf,borderRadius:2,padding:"1px 5px"}}>
+                        <span key={i} style={{...mono,fontSize:11,color:T.inkLL,background:T.bgSurf,borderRadius:2,padding:"1px 5px"}}>
                           {s.tam!=="—"?`${s.tam}×${s.qty}`:`×${s.qty}`}
                         </span>
                       ))}
@@ -1386,27 +1405,27 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
               <button onClick={()=>setAddingItem(true)} style={{
                 width:"100%",padding:"9px",background:accent+"18",
                 color:accent,border:`1px solid ${accent}44`,borderRadius:4,
-                ...mono,fontSize:9,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
+                ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",cursor:"pointer"
               }}>+ Adicionar item em {categories.find(c=>c.id===activeCat)?.label}</button>
             ):(
               <div style={{background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:5,padding:"13px"}}>
-                <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Nome do item</div>
+                <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Nome do item</div>
                 <input value={newItemName} onChange={e=>setNewItemName(e.target.value)}
                   placeholder="Ex: Macacão térmico" autoFocus
                   style={{width:"100%",background:T.bg,border:`1px solid ${T.border}`,borderRadius:3,
                     padding:"7px 10px",...serif,fontSize:13,color:T.ink,outline:"none",boxSizing:"border-box",marginBottom:11}}/>
-                <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Prioridade</div>
+                <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Prioridade</div>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:11}}>
                   {priorities.map(p=>(
                     <button key={p.id} onClick={()=>setNewItemPrio(p.id)} style={{
                       padding:"3px 11px",borderRadius:3,border:"none",cursor:"pointer",
                       background:newItemPrio===p.id?p.color:p.bg,
                       color:newItemPrio===p.id?"#111":p.color,
-                      ...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",transition:"all .15s"
+                      ...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",transition:"all .15s"
                     }}>{p.label}</button>
                   ))}
                 </div>
-                <div style={{...mono,fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Tamanhos e quantidades</div>
+                <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Tamanhos e quantidades</div>
                 {newItemSizes.map((sz,i)=>(
                   <div key={i} style={{display:"flex",gap:5,alignItems:"center",marginBottom:5}}>
                     <select value={sz.tam} onChange={e=>updSzTam(i,e.target.value)} style={{
@@ -1415,7 +1434,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                     }}>
                       {["—","RN","P","M","G","GG"].map(t=><option key={t} value={t}>{t}</option>)}
                     </select>
-                    <span style={{...mono,fontSize:9,color:T.inkLL}}>×</span>
+                    <span style={{...mono,fontSize:11,color:T.inkLL}}>×</span>
                     <input type="number" min={1} value={sz.qty} onChange={e=>updSzQty(i,e.target.value)}
                       style={{width:54,background:T.bg,border:`1px solid ${T.border}`,borderRadius:3,
                         padding:"5px 7px",...mono,fontSize:10,color:T.inkL,outline:"none",textAlign:"center"}}/>
@@ -1424,7 +1443,7 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                 ))}
                 <button onClick={()=>setNewItemSizes(s=>[...s,{tam:"—",qty:1}])} style={{
                   background:"transparent",color:T.inkLL,border:`1px dashed ${T.border}`,
-                  borderRadius:3,padding:"3px 10px",...mono,fontSize:8,letterSpacing:.7,
+                  borderRadius:3,padding:"3px 10px",...mono,fontSize:11,letterSpacing:.7,
                   textTransform:"uppercase",cursor:"pointer",marginBottom:11
                 }}>+ Tamanho</button>
                 <div style={{display:"flex",gap:5}}>
@@ -1436,8 +1455,8 @@ function Manager({ categories, items, priorities, accent, isDark, onAddCat, onDe
                     newItemSizes.forEach(sz=>{ne[`${id}_${sz.tam}`]={units:[]};});
                     onAddItem({id,catId:activeCat,name:newItemName.trim(),priority:newItemPrio,sizes:newItemSizes,price:""});
                     setNewItemName("");setNewItemSizes([{tam:"—",qty:1}]);setAddingItem(false);
-                  }} style={{flex:1,padding:"8px",background:accent,color:"#111",border:"none",borderRadius:3,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Salvar item</button>
-                  <button onClick={()=>{setAddingItem(false);setNewItemName("");setNewItemSizes([{tam:"—",qty:1}]);}} style={{padding:"8px 12px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:9,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"}}>Cancelar</button>
+                  }} style={{flex:1,padding:"8px",background:accent,color:"#111",border:"none",borderRadius:3,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",fontWeight:700}}>Salvar item</button>
+                  <button onClick={()=>{setAddingItem(false);setNewItemName("");setNewItemSizes([{tam:"—",qty:1}]);}} style={{padding:"8px 12px",background:T.bgSurf,color:T.inkL,border:"none",borderRadius:3,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer"}}>Cancelar</button>
                 </div>
               </div>
             )}
@@ -1462,7 +1481,7 @@ function ThemePicker({ currentId, onSelect, onClose, accent }) {
         background:T.bgCard,borderRadius:"12px 12px 0 0",
         border:`1px solid ${T.border}`,padding:"20px 18px 32px"
       }} onClick={e=>e.stopPropagation()}>
-        <div style={{...mono,fontSize:9,letterSpacing:2,textTransform:"uppercase",color:T.inkLL,marginBottom:4}}>Tema de cor</div>
+        <div style={{...mono,fontSize:11,letterSpacing:2,textTransform:"uppercase",color:T.inkLL,marginBottom:4}}>Tema de cor</div>
         <div style={{...serif,fontSize:17,color:T.ink,fontStyle:"italic",marginBottom:18}}>Escolha o seu accent</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
           {Object.values(ACCENT_PALETTES).map(p=>{
@@ -1481,11 +1500,11 @@ function ThemePicker({ currentId, onSelect, onClose, accent }) {
                   boxShadow: on?`0 0 16px ${p.accent}66`:"none",
                   transition:"box-shadow .2s"
                 }}/>
-                <span style={{...mono,fontSize:9,letterSpacing:1,textTransform:"uppercase",
+                <span style={{...mono,fontSize:11,letterSpacing:1,textTransform:"uppercase",
                   color:on?p.accent:T.inkLL}}>
                   {p.label}
                 </span>
-                {on&&<span style={{...mono,fontSize:7,color:p.accent}}>✓ ativo</span>}
+                {on&&<span style={{...mono,fontSize:10,color:p.accent}}>✓ ativo</span>}
               </button>
             );
           })}
@@ -1505,7 +1524,7 @@ const TABS = [
   {id:"gerenciar",label:"Gerenciar"},
 ];
 
-export default function App() {
+export default function App({ user, onLogout }) {
   const [app,setApp]=useState(()=>buildInitialApp());
   const [tab,setTab]=useState("checklist");
   const [saving,setSaving]=useState(false);
@@ -1513,11 +1532,12 @@ export default function App() {
   const [editingName,setEditingName]=useState(false);
   const [nameInput,setNameInput]=useState("");
 
-  useEffect(()=>{ loadApp().then(s=>setApp(s)); },[]);
+  useEffect(()=>{ if(user?.id) loadApp(user.id).then(s=>setApp(s)); },[user?.id]);
 
   const persist=useCallback(next=>{
-    setSaving(true); saveApp(next).then(()=>setSaving(false));
-  },[]);
+    if(!user?.id) return;
+    setSaving(true); saveApp(next, user.id).then(()=>setSaving(false));
+  },[user?.id]);
   const update=useCallback(fn=>{
     setApp(prev=>{const next=fn(prev);persist(next);return next;});
   },[]);
@@ -1613,6 +1633,13 @@ export default function App() {
             <div style={{...mono,fontSize:10,color:T.inkLL,letterSpacing:2,textTransform:"uppercase",marginTop:3}}>
               Setembro · São Paulo
             </div>
+            {/* logout */}
+            <button onClick={onLogout} style={{
+              marginTop:6, background:"none", border:`1px solid ${T.border}`,
+              borderRadius:3, padding:"3px 9px", cursor:"pointer",
+              ...mono, fontSize:11, letterSpacing:.5, textTransform:"uppercase",
+              color:T.inkLL
+            }}>⎋ Sair</button>
           </div>
 
           <div style={{textAlign:"right",flexShrink:0}}>
@@ -1627,7 +1654,7 @@ export default function App() {
         <div style={{height:1,background:T.bgSurf,overflow:"hidden",marginBottom:0}}>
           <div style={{height:"100%",background:accent,width:`${globalPct}%`,transition:"width .5s ease"}}/>
         </div>
-        {saving&&<div style={{...mono,fontSize:7,color:T.inkLL,textAlign:"right",padding:"3px 0 0",letterSpacing:1}}>salvando…</div>}
+        {saving&&<div style={{...mono,fontSize:10,color:T.inkLL,textAlign:"right",padding:"3px 0 0",letterSpacing:1}}>salvando…</div>}
 
         {/* tabs */}
         <div style={{display:"flex",marginTop:saving?0:3}}>
