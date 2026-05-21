@@ -214,6 +214,8 @@ function buildInitialApp(accentId="verde") {
     entries,
     budgetTotal: "",
     budgetByCategory: {},
+    checklistCatOrder: [],   // array of cat ids; empty = default order
+    financeCatOrder: [],     // array of cat ids; empty = default order
   };
 }
 
@@ -433,26 +435,29 @@ function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove,
 
       {/* price per unit — currency-aware */}
       <div style={{
-        background:T.bgSurf,border:`1px solid ${T.border}`,
-        borderRadius:4,marginBottom:10,overflow:"hidden"
+        background:T.bgCard,border:`1.5px solid ${T.border}`,
+        borderRadius:6,marginBottom:10,overflow:"hidden"
       }}>
         {/* currency toggle */}
-        <div style={{display:"flex",borderBottom:`1px solid ${T.border}`}}>
-          {["BRL","USD"].map(cur=>(
-            <button key={cur} onClick={()=>onChange({...unit,currency:cur})} style={{
-              flex:1,padding:"5px 0",border:"none",cursor:"pointer",
-              background:(unit.currency||"BRL")===cur?accent:"transparent",
-              color:(unit.currency||"BRL")===cur?"#111":T.inkLL,
-              ...mono,fontSize:10,letterSpacing:1,textTransform:"uppercase",
-              fontWeight:(unit.currency||"BRL")===cur?700:400,
-              transition:"all .15s"
-            }}>{cur==="BRL"?"R$ Real":"US$ Dólar"}</button>
-          ))}
+        <div style={{display:"flex",borderBottom:`1.5px solid ${T.border}`}}>
+          {["BRL","USD"].map(cur=>{
+            const isActive=(unit.currency||"BRL")===cur;
+            return (
+              <button key={cur} onClick={()=>onChange({...unit,currency:cur})} style={{
+                flex:1,padding:"8px 0",border:"none",cursor:"pointer",
+                background:isActive?accent:T.bgSurf,
+                color:isActive?"#111":T.inkL,
+                ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",
+                fontWeight:isActive?700:500,
+                transition:"all .15s"
+              }}>{cur==="BRL"?"R$ Real":"US$ Dólar"}</button>
+            );
+          })}
         </div>
 
         {/* price input */}
-        <div style={{display:"flex",alignItems:"center",gap:7,padding:"7px 10px"}}>
-          <span style={{...mono,fontSize:11,color:T.inkLL,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",background:T.bgCard}}>
+          <span style={{...mono,fontSize:12,color:T.inkL,fontWeight:600,flexShrink:0}}>
             {(unit.currency||"BRL")==="USD"?"US$":"R$"}
           </span>
           <input type="number" step="0.01"
@@ -461,10 +466,14 @@ function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove,
             placeholder="0,00"
             style={{
               flex:1,background:"transparent",border:"none",
-              ...mono,fontSize:16,color:accent,outline:"none",fontWeight:500,minWidth:0
+              ...mono,fontSize:18,color:accent,outline:"none",fontWeight:600,minWidth:0
             }}/>
           {parseFloat(unit.price)>0&&(
-            <span style={{...mono,fontSize:11,color:accent,flexShrink:0}}>
+            <span style={{
+              ...mono,fontSize:12,color:T.bgCard==="white"||T.bgCard==="#FFFFFF"?T.ink:T.inkL,
+              background:accent+"22",border:`1px solid ${accent}44`,
+              borderRadius:3,padding:"2px 8px",flexShrink:0,fontWeight:600
+            }}>
               {(unit.currency||"BRL")==="USD"?fmtUSD(unit.price):fmtBRL(unit.price)}
             </span>
           )}
@@ -473,29 +482,37 @@ function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove,
         {/* cotacao field — only for USD */}
         {(unit.currency||"BRL")==="USD"&&(
           <div style={{
-            borderTop:`1px solid ${T.border}`,
-            display:"flex",alignItems:"center",gap:7,padding:"6px 10px",
-            background:accent+"0A"
+            borderTop:`1.5px solid ${T.border}`,
+            display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
+            background:accent+"14"
           }}>
-            <span style={{...mono,fontSize:10,color:T.inkLL,flexShrink:0,letterSpacing:.5}}>
+            <span style={{...mono,fontSize:11,color:T.inkL,fontWeight:600,flexShrink:0,letterSpacing:.3}}>
               Cotação US$ 1 =
             </span>
-            <span style={{...mono,fontSize:10,color:T.inkLL,flexShrink:0}}>R$</span>
+            <span style={{...mono,fontSize:11,color:T.inkL,fontWeight:600,flexShrink:0}}>R$</span>
             <input type="number" step="0.01"
               value={unit.cotacao||""}
               onChange={e=>onChange({...unit,cotacao:e.target.value})}
               placeholder="Ex: 5,85"
               style={{
                 flex:1,background:"transparent",border:"none",
-                ...mono,fontSize:13,color:T.ink,outline:"none",fontWeight:500,minWidth:0
+                ...mono,fontSize:14,color:T.ink,outline:"none",fontWeight:600,minWidth:0
               }}/>
             {parseFloat(unit.price)>0&&parseFloat(unit.cotacao)>0&&(
-              <span style={{...mono,fontSize:10,color:accent,flexShrink:0}}>
+              <span style={{
+                ...mono,fontSize:11,color:accent,fontWeight:700,
+                background:accent+"22",border:`1px solid ${accent}44`,
+                borderRadius:3,padding:"2px 8px",flexShrink:0
+              }}>
                 ≈ {fmtBRL(parseFloat(unit.price)*parseFloat(unit.cotacao))}
               </span>
             )}
             {parseFloat(unit.price)>0&&!parseFloat(unit.cotacao)&&(
-              <span style={{...mono,fontSize:10,color:T.amber,flexShrink:0}}>cotação pendente</span>
+              <span style={{
+                ...mono,fontSize:11,color:T.amber,fontWeight:600,
+                background:T.amberDim,border:`1px solid ${T.amber}44`,
+                borderRadius:3,padding:"2px 8px",flexShrink:0
+              }}>⚠️ cotação pendente</span>
             )}
           </div>
         )}
@@ -719,7 +736,68 @@ function ItemCard({ item, priorities, entries, customTags, deletedPresets, onCha
 // ─────────────────────────────────────────────────────────────────────────────
 // CHECKLIST
 // ─────────────────────────────────────────────────────────────────────────────
-function Checklist({ categories, items, priorities, entries, customTags, deletedPresets, accent, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem }) {
+// ── Drag-to-reorder helpers ────────────────────────────────────────────────
+function DragHandle({ accent }) {
+  return (
+    <div title="Arrastar para reordenar" style={{
+      cursor:"grab", padding:"0 6px", color:T.ghost,
+      display:"flex", flexDirection:"column", gap:3, flexShrink:0,
+      userSelect:"none"
+    }}>
+      <div style={{width:14,height:2,background:"currentColor",borderRadius:99,opacity:.5}}/>
+      <div style={{width:14,height:2,background:"currentColor",borderRadius:99,opacity:.5}}/>
+      <div style={{width:14,height:2,background:"currentColor",borderRadius:99,opacity:.5}}/>
+    </div>
+  );
+}
+
+// Returns sorted categories by saved order; new cats append at end
+function sortedCats(categories, order) {
+  if(!order||order.length===0) return categories;
+  const known = order.filter(id=>categories.some(c=>c.id===id));
+  const rest  = categories.filter(c=>!known.includes(c.id));
+  return [...known.map(id=>categories.find(c=>c.id===id)).filter(Boolean), ...rest];
+}
+
+function DraggableCatList({ categories, order, onReorder, renderCat }) {
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const ordered = sortedCats(categories, order);
+
+  const reorder = (fromId, toId) => {
+    if(fromId===toId) return;
+    const cur = sortedCats(categories, order).map(c=>c.id);
+    const fi = cur.indexOf(fromId);
+    const ti = cur.indexOf(toId);
+    const next = [...cur];
+    next.splice(fi, 1);
+    next.splice(ti, 0, fromId);
+    onReorder(next);
+  };
+
+  return (
+    <div>
+      {ordered.map(cat=>(
+        <div key={cat.id}
+          draggable
+          onDragStart={e=>{ setDragId(cat.id); e.dataTransfer.effectAllowed="move"; }}
+          onDragEnd={()=>{ if(dragId&&overId&&dragId!==overId) reorder(dragId,overId); setDragId(null); setOverId(null); }}
+          onDragOver={e=>{ e.preventDefault(); setOverId(cat.id); }}
+          onDragEnter={e=>{ e.preventDefault(); setOverId(cat.id); }}
+          style={{
+            opacity: dragId===cat.id ? 0.4 : 1,
+            transition:"opacity .15s",
+            outline: overId===cat.id&&dragId!==cat.id ? `2px solid ${T.border}` : "none",
+            borderRadius:4
+          }}>
+          {renderCat(cat)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Checklist({ categories, items, priorities, entries, customTags, deletedPresets, catOrder, accent, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, onReorderCats }) {
   const [filterPrio, setFilterPrio] = useState("todos");
   const [filterCat,  setFilterCat]  = useState(null);
   const [search, setSearch] = useState("");
@@ -790,20 +868,26 @@ function Checklist({ categories, items, priorities, entries, customTags, deleted
         ?<div style={{textAlign:"center",padding:"40px",...mono,fontSize:10,color:T.ghost,letterSpacing:1.5}}>
            Nenhum item encontrado
          </div>
-        :visible.map(cat=>(
-          <div key={cat.id} style={{marginBottom:22}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
-              <span style={{...mono,fontSize:11,letterSpacing:1.5,color:accent,textTransform:"uppercase",fontWeight:600}}>{cat.label}</span>
-              <div style={{height:1,flex:1,background:T.border}}/>
+        :<DraggableCatList
+          categories={visible}
+          order={catOrder}
+          onReorder={onReorderCats}
+          renderCat={cat=>(
+            <div style={{marginBottom:22}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
+                <DragHandle accent={accent}/>
+                <span style={{...mono,fontSize:11,letterSpacing:1.5,color:accent,textTransform:"uppercase",fontWeight:600}}>{cat.label}</span>
+                <div style={{height:1,flex:1,background:T.border}}/>
+              </div>
+              {cat.items.map(item=>(
+                <ItemCard key={item.id} item={item} priorities={priorities} accent={accent}
+                  entries={entries} customTags={customTags} deletedPresets={deletedPresets}
+                  onChangeEntry={onChangeEntry} onCreateTag={onCreateTag}
+                  onDeleteItem={onDeleteItem} onUpdateItem={onUpdateItem}/>
+              ))}
             </div>
-            {cat.items.map(item=>(
-              <ItemCard key={item.id} item={item} priorities={priorities} accent={accent}
-                entries={entries} customTags={customTags} deletedPresets={deletedPresets}
-                onChangeEntry={onChangeEntry} onCreateTag={onCreateTag}
-                onDeleteItem={onDeleteItem} onUpdateItem={onUpdateItem}/>
-            ))}
-          </div>
-        ))
+          )}
+        />
       }
     </div>
   );
@@ -820,7 +904,7 @@ const FINANCE_BUCKETS = [
 ];
 
 function Finance({ categories, items, entries, priorities, accent,
-                   budgetTotal, budgetByCategory, onSetBudgetTotal, onSetBudgetCategory }) {
+                   budgetTotal, budgetByCategory, catOrder, onSetBudgetTotal, onSetBudgetCategory, onReorderCats }) {
   const [showBudgetPanel, setShowBudgetPanel] = useState(false);
   const [budgetMode, setBudgetMode] = useState("total"); // "total" | "categoria"
   const [editBudgetTotal, setEditBudgetTotal] = useState(budgetTotal||"");
@@ -1017,7 +1101,11 @@ function Finance({ categories, items, entries, priorities, accent,
       </div>
 
       {/* ── BY CATEGORY ── */}
-      {categories.map(cat=>{
+      <DraggableCatList
+        categories={categories.filter(cat=>catMap[cat.id]&&catMap[cat.id].items.length>0)}
+        order={catOrder}
+        onReorder={onReorderCats}
+        renderCat={cat=>{
         const cd=catMap[cat.id];
         if(!cd||cd.items.length===0) return null;
         const cBudget=catBudget(cat.id);
@@ -1025,8 +1113,9 @@ function Finance({ categories, items, entries, priorities, accent,
         const [exp,setExp]=useState(false);
         return (
           <div key={cat.id} style={{marginBottom:7,border:`1px solid ${T.border}`,borderRadius:6,overflow:"hidden"}}>
-            <div style={{display:"flex",alignItems:"center",gap:11,padding:"11px 13px",cursor:"pointer",background:T.bgCard}}
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"11px 13px",cursor:"pointer",background:T.bgCard}}
               onClick={()=>setExp(x=>!x)}>
+              <DragHandle accent={accent}/>
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:4}}>
                   <span style={{...serif,fontSize:14,color:T.ink,fontStyle:"italic"}}>{cat.label}</span>
@@ -1074,7 +1163,8 @@ function Finance({ categories, items, entries, priorities, accent,
             )}
           </div>
         );
-      })}
+        }}
+      />
 
       {grandTotal===0&&(
         <div style={{textAlign:"center",padding:"32px",...mono,fontSize:11,color:T.ghost,letterSpacing:1.5,border:`1px dashed ${T.border}`,borderRadius:6}}>
@@ -1900,6 +1990,8 @@ export default function App({ user, onLogout }) {
   const setBudgetTotal= useCallback(v=>{ update(prev=>({...prev,budgetTotal:v})); },[]);
   const setBudgetCat  = useCallback(v=>{ update(prev=>({...prev,budgetByCategory:v})); },[]);
   const toggleDark    = useCallback(()=>{ update(prev=>({...prev,isDark:!prev.isDark})); },[]);
+  const reorderChecklistCats = useCallback(order=>{ update(prev=>({...prev,checklistCatOrder:order})); },[]);
+  const reorderFinanceCats   = useCallback(order=>{ update(prev=>({...prev,financeCatOrder:order})); },[]);
   const setBabyName   = useCallback(v=>{ update(prev=>({...prev,babyName:v})); },[]);
   const setAccentId   = useCallback(id=>{
     update(prev=>{
@@ -1912,7 +2004,7 @@ export default function App({ user, onLogout }) {
     });
   },[]);
 
-  const {categories=[],items=[],entries={},customTags=[],deletedPresets=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=true,babyName=""} = app;
+  const {categories=[],items=[],entries={},customTags=[],deletedPresets=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=true,babyName="",checklistCatOrder=[],financeCatOrder=[]} = app;
   const pal = ACCENT_PALETTES[accentId]||ACCENT_PALETTES.verde;
   const accent = pal.accent;
   T = isDark ? DARK : LIGHT; // update module-level theme
@@ -2033,12 +2125,16 @@ export default function App({ user, onLogout }) {
         {tab==="checklist"&&(
           <Checklist categories={categories} items={items} priorities={priorities}
             entries={entries} customTags={customTags} deletedPresets={deletedPresets} accent={accent}
+            catOrder={checklistCatOrder}
+            onReorderCats={reorderChecklistCats}
             onChangeEntry={updateEntry} onCreateTag={createTag}
             onDeleteItem={deleteItem} onUpdateItem={updateItem}/>
         )}
         {tab==="financeiro"&&(
           <Finance categories={categories} items={items} entries={entries}
             priorities={priorities} accent={accent}
+            catOrder={financeCatOrder}
+            onReorderCats={reorderFinanceCats}
             budgetTotal={budgetTotal} budgetByCategory={budgetByCategory}
             onSetBudgetTotal={setBudgetTotal} onSetBudgetCategory={setBudgetCat}/>
         )}
