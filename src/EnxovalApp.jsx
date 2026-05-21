@@ -210,6 +210,7 @@ function buildInitialApp(accentId="verde") {
     priorities: buildDefaultPriorities(accent),
     items: DEFAULT_ITEMS.map(i=>({...i, price:""})),
     customTags: [],
+    deletedPresets: [],
     entries,
     budgetTotal: "",
     budgetByCategory: {},
@@ -246,7 +247,12 @@ async function saveApp(state, userId) {
 function fileToDataUrl(f) {
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
 }
-function allTags(ct) { return [...PRESET_TAGS,...ct]; }
+function allTags(ct, deletedPresets=[]) {
+  return [
+    ...PRESET_TAGS.filter(p=>!deletedPresets.includes(p.id)),
+    ...ct
+  ];
+}
 function tagById(id,ct) { return allTags(ct).find(t=>t.id===id); }
 // Convert a unit's price to BRL (handles USD with cotacao)
 function unitPriceBRL(unit) {
@@ -359,12 +365,12 @@ function DInput({ value, onChange, placeholder, style, type="text", step, autoFo
 // ─────────────────────────────────────────────────────────────────────────────
 // TAG PICKER
 // ─────────────────────────────────────────────────────────────────────────────
-function TagPicker({ selected, customTags, onToggle }) {
+function TagPicker({ selected, customTags, deletedPresets, onToggle }) {
   return (
     <div>
       <div style={{...mono,fontSize:10,letterSpacing:1,textTransform:"uppercase",color:T.inkLL,marginBottom:6}}>Tags</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:4}}>
-        {allTags(customTags).map(tag=>{
+        {allTags(customTags, deletedPresets).map(tag=>{
           const on=selected.includes(tag.id);
           return (
             <button key={tag.id} onClick={()=>onToggle(tag.id)} style={{
@@ -391,7 +397,7 @@ function TagPicker({ selected, customTags, onToggle }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIT CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, accent }) {
+function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove, onCreateTag, accent }) {
   const inputRef = useRef();
   const done = unitDone(unit);
   const handleFile = async e => {
@@ -542,7 +548,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
         <input ref={inputRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile}/>
       </div>
 
-      <TagPicker selected={unit.tags||[]} customTags={customTags}
+      <TagPicker selected={unit.tags||[]} customTags={customTags} deletedPresets={deletedPresets||[]}
         onToggle={id=>onChange({...unit,tags:(unit.tags||[]).includes(id)?(unit.tags||[]).filter(x=>x!==id):[...(unit.tags||[]),id]})}/>
       <textarea value={unit.note||""} onChange={e=>onChange({...unit,note:e.target.value})}
         placeholder="Observação — marca, loja, presenteado por…"
@@ -560,7 +566,7 @@ function UnitCard({ index, unit, customTags, onChange, onRemove, onCreateTag, ac
 // ─────────────────────────────────────────────────────────────────────────────
 // SIZE ROW
 // ─────────────────────────────────────────────────────────────────────────────
-function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accent }) {
+function SizeRow({ sz, entryKey, entry, customTags, deletedPresets, onChange, onCreateTag, accent }) {
   const [open, setOpen] = useState(false);
   const units = entry?.units||[];
   const bought = units.length;
@@ -614,7 +620,7 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
              </div>
             :units.map((u,i)=>(
               <UnitCard key={i} index={i} unit={u} accent={accent}
-                customTags={customTags}
+                customTags={customTags} deletedPresets={deletedPresets}
                 onChange={val=>{const n=[...units];n[i]=val;upUnits(n);}}
                 onRemove={()=>upUnits(units.filter((_,j)=>j!==i))}
                 onCreateTag={onCreateTag}/>
@@ -649,7 +655,7 @@ function SizeRow({ sz, entryKey, entry, customTags, onChange, onCreateTag, accen
 // ─────────────────────────────────────────────────────────────────────────────
 // ITEM CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, accent }) {
+function ItemCard({ item, priorities, entries, customTags, deletedPresets, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, accent }) {
   const [open, setOpen] = useState(false);
   const pm = getPrio(priorities,item.priority);
   const totalSug    = item.sizes.reduce((s,sz)=>s+sz.qty,0);
@@ -699,7 +705,7 @@ function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCrea
             return (
               <SizeRow key={key} sz={sz} entryKey={key} accent={accent}
                 entry={entries[key]||{units:[]}}
-                customTags={customTags}
+                customTags={customTags} deletedPresets={deletedPresets||[]}
                 onChange={onChangeEntry}
                 onCreateTag={onCreateTag}/>
             );
@@ -713,7 +719,7 @@ function ItemCard({ item, priorities, entries, customTags, onChangeEntry, onCrea
 // ─────────────────────────────────────────────────────────────────────────────
 // CHECKLIST
 // ─────────────────────────────────────────────────────────────────────────────
-function Checklist({ categories, items, priorities, entries, customTags, accent, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem }) {
+function Checklist({ categories, items, priorities, entries, customTags, deletedPresets, accent, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem }) {
   const [filterPrio, setFilterPrio] = useState("todos");
   const [filterCat,  setFilterCat]  = useState(null);
   const [search, setSearch] = useState("");
@@ -792,7 +798,7 @@ function Checklist({ categories, items, priorities, entries, customTags, accent,
             </div>
             {cat.items.map(item=>(
               <ItemCard key={item.id} item={item} priorities={priorities} accent={accent}
-                entries={entries} customTags={customTags}
+                entries={entries} customTags={customTags} deletedPresets={deletedPresets}
                 onChangeEntry={onChangeEntry} onCreateTag={onCreateTag}
                 onDeleteItem={onDeleteItem} onUpdateItem={onUpdateItem}/>
             ))}
@@ -1332,10 +1338,14 @@ function TagManagerRow({ tag, isPreset, onEdit, onDelete, usageCount, accent }) 
               background:T.rose+"15",border:`1px solid ${T.rose}33`,
               borderRadius:3,padding:"8px 10px",lineHeight:1.6}}>
               ⚠️ Esta tag está em uso em <strong style={{color:T.rose}}>{usageCount} unidade{usageCount!==1?"s":""}</strong>. Ao excluir, essas unidades perderão essa referência.
+              {isPreset&&<div style={{marginTop:4,color:T.amber}}>Esta é uma tag padrão do sistema.</div>}
             </div>
           ) : (
             <div style={{...mono,fontSize:11,color:T.inkLL,marginBottom:10}}>
-              Esta tag não está em uso. Pode excluir sem impacto.
+              {isPreset
+                ? "Esta é uma tag padrão do sistema. Pode excluir, mas não será restaurada automaticamente."
+                : "Esta tag não está em uso. Pode excluir sem impacto."
+              }
             </div>
           )}
           <div style={{display:"flex",gap:6}}>
@@ -1370,12 +1380,10 @@ function TagManagerRow({ tag, isPreset, onEdit, onDelete, usageCount, accent }) 
             background:T.bgSurf,color:T.inkL,border:`1px solid ${T.border}`,
             borderRadius:3,...mono,fontSize:11,padding:"3px 10px",cursor:"pointer"
           }}>Editar</button>
-          {!isPreset && (
-            <button onClick={()=>setConfirming(true)} style={{
-              background:"none",border:`1px solid ${T.border}`,borderRadius:3,
+          <button onClick={()=>setConfirming(true)} style={{
+              background:"none",border:`1px solid ${T.rose}44`,borderRadius:3,
               color:T.rose,cursor:"pointer",...mono,fontSize:11,padding:"3px 8px"
             }}>Excluir</button>
-          )}
         </div>
       )}
     </div>
@@ -1420,7 +1428,7 @@ function AddTagForm({ onAdd, accent }) {
   );
 }
 
-function Manager({ categories, items, priorities, customTags, entries, accent, isDark, onAddCat, onDeleteCat, onAddItem, onDeleteItem, onUpdateItem, onSetPriorities, onToggleDark, onShowTheme, onCreateTag, onDeleteTag, onEditTag }) {
+function Manager({ categories, items, priorities, customTags, deletedPresets, entries, accent, isDark, onAddCat, onDeleteCat, onAddItem, onDeleteItem, onUpdateItem, onSetPriorities, onToggleDark, onShowTheme, onCreateTag, onDeleteTag, onEditTag }) {
   const [section,setSection]=useState("itens");
   const [activeCat,setActiveCat]=useState(categories[0]?.id||"");
   const [newCatLabel,setNewCatLabel]=useState("");
@@ -1855,8 +1863,12 @@ export default function App({ user, onLogout }) {
   const createTag     = useCallback(t=>{ update(prev=>({...prev,customTags:[...(prev.customTags||[]),t]})); },[]);
   const deleteTag     = useCallback(id=>{
     update(prev=>{
-      // remove from customTags list
+      const isPreset = PRESET_TAGS.some(p=>p.id===id);
+      // remove from customTags or mark preset as deleted
       const customTags = (prev.customTags||[]).filter(t=>t.id!==id);
+      const deletedPresets = isPreset
+        ? [...new Set([...(prev.deletedPresets||[]), id])]
+        : (prev.deletedPresets||[]);
       // scrub tag from all unit entries
       const entries = Object.fromEntries(
         Object.entries(prev.entries||{}).map(([k,v])=>([k,{
@@ -1864,7 +1876,7 @@ export default function App({ user, onLogout }) {
           units:(v.units||[]).map(u=>({...u,tags:(u.tags||[]).filter(tid=>tid!==id)}))
         }]))
       );
-      return {...prev, customTags, entries};
+      return {...prev, customTags, deletedPresets, entries};
     });
   },[]);
   const editTag       = useCallback((id,label,color)=>{
@@ -1900,7 +1912,7 @@ export default function App({ user, onLogout }) {
     });
   },[]);
 
-  const {categories=[],items=[],entries={},customTags=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=true,babyName=""} = app;
+  const {categories=[],items=[],entries={},customTags=[],deletedPresets=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=true,babyName=""} = app;
   const pal = ACCENT_PALETTES[accentId]||ACCENT_PALETTES.verde;
   const accent = pal.accent;
   T = isDark ? DARK : LIGHT; // update module-level theme
@@ -2020,7 +2032,7 @@ export default function App({ user, onLogout }) {
       <div style={{padding:"18px 14px 80px"}}>
         {tab==="checklist"&&(
           <Checklist categories={categories} items={items} priorities={priorities}
-            entries={entries} customTags={customTags} accent={accent}
+            entries={entries} customTags={customTags} deletedPresets={deletedPresets} accent={accent}
             onChangeEntry={updateEntry} onCreateTag={createTag}
             onDeleteItem={deleteItem} onUpdateItem={updateItem}/>
         )}
@@ -2043,6 +2055,7 @@ export default function App({ user, onLogout }) {
             onToggleDark={toggleDark}
             onShowTheme={()=>setShowTheme(true)}
             entries={entries}
+            deletedPresets={deletedPresets}
             onCreateTag={createTag}
             onDeleteTag={deleteTag}
             onEditTag={editTag}
