@@ -1088,7 +1088,7 @@ function Finance({ categories, items, entries, priorities, accent,
 // ─────────────────────────────────────────────────────────────────────────────
 // GALLERY
 // ─────────────────────────────────────────────────────────────────────────────
-function Gallery({ categories, items, entries, customTags, priorities, accent }) {
+function Gallery({ categories, items, entries, customTags, deletedPresets, priorities, accent }) {
   const [filters,setFilters]=useState({});
   const [showF,setShowF]=useState(false);
   const allPhotos=[];
@@ -1159,7 +1159,7 @@ function Gallery({ categories, items, entries, customTags, priorities, accent })
             ["Tamanho",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{allTams.map(t=>{const ts=TAM[t]||TAM["—"];return<FPill key={t} label={t} active={(filters.tams||[]).includes(t)} onClick={()=>toggle("tams",t)} color={ts.color}/>;})}</div>],
             ["Prioridade",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{priorities.map(p=><FPill key={p.id} label={p.label} active={(filters.prios||[]).includes(p.id)} onClick={()=>toggle("prios",p.id)} color={p.color}/>)}</div>],
             ["Categoria",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{categories.map(c=><FPill key={c.id} label={c.label} active={(filters.cats||[]).includes(c.id)} onClick={()=>toggle("cats",c.id)}/>)}</div>],
-            ["Tags",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{allTags(customTags).map(t=><button key={t.id} onClick={()=>toggle("tags",t.id)} style={{padding:"2px 9px",borderRadius:3,border:`1px solid ${t.color}55`,background:(filters.tags||[]).includes(t.id)?t.color:t.color+"18",color:(filters.tags||[]).includes(t.id)?"#111":t.color,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}</div>],
+            ["Tags",<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{allTags(customTags, deletedPresets||[]).map(t=><button key={t.id} onClick={()=>toggle("tags",t.id)} style={{padding:"2px 9px",borderRadius:3,border:`1px solid ${t.color}55`,background:(filters.tags||[]).includes(t.id)?t.color:t.color+"18",color:(filters.tags||[]).includes(t.id)?"#111":t.color,...mono,fontSize:11,letterSpacing:.7,textTransform:"uppercase",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}</div>],
           ].map(([lbl,content])=>(
             <div key={lbl} style={{marginBottom:9}}>
               <div style={{...mono,fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:T.inkLL,marginBottom:5}}>{lbl}</div>
@@ -1349,7 +1349,7 @@ function TagManagerRow({ tag, isPreset, onEdit, onDelete, usageCount, accent }) 
             </div>
           )}
           <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>{ onDelete(); setConfirming(false); }} style={{
+            <button onClick={()=>{ setConfirming(false); setTimeout(()=>onDelete(), 0); }} style={{
               flex:1,padding:"8px",background:T.rose,color:"#fff",
               border:"none",borderRadius:3,...mono,fontSize:11,fontWeight:700,cursor:"pointer"
             }}>
@@ -1580,7 +1580,7 @@ function Manager({ categories, items, priorities, customTags, deletedPresets, en
           </div>
 
           {/* existing tags */}
-          {allTags(customTags).map(tag=>{
+          {allTags(customTags, deletedPresets).map(tag=>{
             // count how many units across all entries use this tag
             const usageCount = Object.values(entries||{}).reduce((total, entry)=>
               total + (entry.units||[]).filter(u=>(u.tags||[]).includes(tag.id)).length, 0);
@@ -2044,7 +2044,7 @@ export default function App({ user, onLogout }) {
         )}
         {tab==="galeria"&&(
           <Gallery categories={categories} items={items} entries={entries}
-            customTags={customTags} priorities={priorities} accent={accent}/>
+            customTags={customTags} deletedPresets={deletedPresets} priorities={priorities} accent={accent}/>
         )}
         {tab==="gerenciar"&&(
           <Manager categories={categories} items={items} priorities={priorities}
