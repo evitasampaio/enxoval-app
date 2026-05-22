@@ -943,6 +943,28 @@ function Finance({ categories, items, entries, priorities, accent,
     : categories.reduce((s,c)=>s+catBudget(c.id),0);
   const pct = grandBudget>0 ? Math.round(grandTotal/grandBudget*100) : 0;
 
+  // ── USD breakdown ──────────────────────────────────────────────────────────
+  const usdStats = (() => {
+    let totalUSD = 0;        // sum of raw USD values
+    let totalUSDinBRL = 0;   // converted to BRL
+    let pendingCotacao = 0;  // units with USD price but no cotacao
+    let countUSD = 0;
+    Object.values(entries||{}).forEach(entry=>{
+      (entry.units||[]).forEach(u=>{
+        if(u.currency==="USD" && parseFloat(u.price)>0) {
+          countUSD++;
+          totalUSD += parseFloat(u.price);
+          if(parseFloat(u.cotacao)>0) {
+            totalUSDinBRL += parseFloat(u.price)*parseFloat(u.cotacao);
+          } else {
+            pendingCotacao++;
+          }
+        }
+      });
+    });
+    return { totalUSD, totalUSDinBRL, pendingCotacao, countUSD };
+  })();
+
   // ── fixed 3-bucket breakdown ──
   const buckets = FINANCE_BUCKETS.map(bk=>{
     let total=0, est=0;
@@ -974,6 +996,21 @@ function Finance({ categories, items, entries, priorities, accent,
 
   return (
     <div>
+      {/* ── ORÇAMENTO BUTTON — outside hero ── */}
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+        <button onClick={()=>setShowBudgetPanel(x=>!x)} style={{
+          background:showBudgetPanel?accent:T.bgCard,
+          color:showBudgetPanel?"#111":accent,
+          border:`1.5px solid ${accent}66`,borderRadius:5,
+          ...mono,fontSize:11,letterSpacing:.8,textTransform:"uppercase",
+          padding:"7px 14px",cursor:"pointer",fontWeight:600,transition:"all .2s",
+          display:"flex",alignItems:"center",gap:6
+        }}>
+          <span style={{fontSize:13}}>💰</span>
+          {grandBudget>0?"Editar orçamento":"Definir orçamento"}
+        </button>
+      </div>
+
       {/* ── HERO ── */}
       <div style={{
         background:`linear-gradient(135deg, ${accent}22 0%, ${accent}08 100%)`,
@@ -981,48 +1018,67 @@ function Finance({ categories, items, entries, priorities, accent,
         padding:"18px 20px",marginBottom:14,position:"relative",overflow:"hidden"
       }}>
         <div style={{position:"absolute",top:-30,right:-30,width:100,height:100,background:accent+"15",borderRadius:"50%"}}/>
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
-          <div>
-            <div style={{...mono,fontSize:11,letterSpacing:2,textTransform:"uppercase",color:T.inkLL,marginBottom:5}}>Total investido</div>
-            <div style={{...serif,fontSize:32,color:accent,fontWeight:300,letterSpacing:-1,fontStyle:"italic"}}>{fmtBRL(grandTotal)}</div>
-            {grandBudget>0&&(
-              <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:4}}>
-                de {fmtBRL(grandBudget)} orçados · {pct}% executado
+
+        {/* total principal em BRL */}
+        <div style={{marginBottom:grandBudget>0?8:12}}>
+          <div style={{...mono,fontSize:11,letterSpacing:2,textTransform:"uppercase",color:T.inkLL,marginBottom:4}}>
+            Total investido
+          </div>
+          <div style={{...serif,fontSize:36,color:accent,fontWeight:300,letterSpacing:-1,fontStyle:"italic",lineHeight:1}}>
+            {fmtBRL(grandTotal)}
+          </div>
+          {grandBudget>0&&(
+            <div style={{...mono,fontSize:11,color:T.inkLL,marginTop:6}}>
+              de {fmtBRL(grandBudget)} orçados · {pct}% executado
+            </div>
+          )}
+        </div>
+
+        {/* USD breakdown — only shown if any USD units exist */}
+        {usdStats.countUSD>0&&(
+          <div style={{
+            display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,
+            padding:"8px 11px",marginBottom:10,
+            background:usdStats.pendingCotacao>0?T.amber+"18":accent+"14",
+            border:`1px solid ${usdStats.pendingCotacao>0?T.amber+"55":accent+"44"}`,
+            borderRadius:5
+          }}>
+            {/* USD raw total */}
+            <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+              <span style={{...mono,fontSize:10,color:usdStats.pendingCotacao>0?T.amber:T.inkLL,letterSpacing:.5}}>
+                {fmtUSD(usdStats.totalUSD)}
+              </span>
+              <span style={{...mono,fontSize:10,color:usdStats.pendingCotacao>0?T.amber:T.inkLL}}>em dólar</span>
+            </div>
+
+            {/* separator */}
+            <span style={{...mono,fontSize:11,color:T.ghost}}>→</span>
+
+            {/* BRL converted value */}
+            {usdStats.totalUSDinBRL>0&&(
+              <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+                <span style={{...mono,fontSize:11,color:accent,fontWeight:700}}>
+                  {fmtBRL(usdStats.totalUSDinBRL)}
+                </span>
+                <span style={{...mono,fontSize:10,color:T.inkLL}}>convertidos</span>
               </div>
             )}
-            {(()=>{
-              // count USD units with missing cotacao
-              const pendingCotacao = Object.values(entries||{}).reduce((t,entry)=>
-                t+(entry.units||[]).filter(u=>u.currency==="USD"&&parseFloat(u.price)>0&&!parseFloat(u.cotacao)).length, 0);
-              const usdTotal = Object.values(entries||{}).reduce((t,entry)=>
-                t+(entry.units||[]).filter(u=>u.currency==="USD"&&parseFloat(u.price)>0).length, 0);
-              if(usdTotal===0) return null;
-              return (
-                <div style={{
-                  marginTop:8,padding:"6px 10px",
-                  background:pendingCotacao>0?T.amber+"22":"transparent",
-                  border:`1px solid ${pendingCotacao>0?T.amber+"55":accent+"33"}`,
-                  borderRadius:3,...mono,fontSize:10,
-                  color:pendingCotacao>0?T.amber:T.inkLL
-                }}>
-                  {pendingCotacao>0
-                    ? `⚠️ ${pendingCotacao} unidade${pendingCotacao!==1?"s":""} em US$ sem cotação — não incluídas no total`
-                    : `✓ ${usdTotal} unidade${usdTotal!==1?"s":""} em US$ convertidas para R$`
-                  }
-                </div>
-              );
-            })()}
+
+            {/* pending warning */}
+            {usdStats.pendingCotacao>0&&(
+              <span style={{...mono,fontSize:10,color:T.amber,fontWeight:600,marginLeft:"auto"}}>
+                ⚠️ {usdStats.pendingCotacao} sem cotação
+              </span>
+            )}
+            {usdStats.pendingCotacao===0&&(
+              <span style={{...mono,fontSize:10,color:accent,marginLeft:"auto"}}>
+                ✓ {usdStats.countUSD} un convertidas
+              </span>
+            )}
           </div>
-          <button onClick={()=>setShowBudgetPanel(x=>!x)} style={{
-            background:showBudgetPanel?accent:accent+"22",
-            color:showBudgetPanel?"#111":accent,
-            border:`1px solid ${accent}44`,borderRadius:4,
-            ...mono,fontSize:11,letterSpacing:1,textTransform:"uppercase",
-            padding:"6px 11px",cursor:"pointer",flexShrink:0,marginTop:2,transition:"all .2s"
-          }}>
-            {grandBudget>0?"Editar orçamento":"Definir orçamento"}
-          </button>
-        </div>
+        )}
+
+        {/* progress bar */}
         <div style={{height:2,background:T.bgSurf,borderRadius:99,overflow:"hidden"}}>
           <div style={{height:"100%",background:accent,width:`${pct}%`,borderRadius:99,transition:"width .5s"}}/>
         </div>
