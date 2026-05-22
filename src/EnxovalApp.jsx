@@ -204,7 +204,7 @@ function buildInitialApp(accentId="verde") {
   }));
   return {
     accentId,
-    isDark: true,
+    isDark: false,
     babyName: "",
     categories: DEFAULT_CATEGORIES,
     priorities: buildDefaultPriorities(accent),
@@ -762,13 +762,17 @@ function sortedCats(categories, order) {
 function DraggableCatList({ categories, order, onReorder, renderCat }) {
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
+  // Use refs to avoid stale closure in onDragEnd
+  const dragIdRef = useRef(null);
+  const overIdRef = useRef(null);
   const ordered = sortedCats(categories, order);
 
-  const reorder = (fromId, toId) => {
-    if(fromId===toId) return;
+  const doReorder = (fromId, toId) => {
+    if(!fromId || !toId || fromId===toId) return;
     const cur = sortedCats(categories, order).map(c=>c.id);
     const fi = cur.indexOf(fromId);
     const ti = cur.indexOf(toId);
+    if(fi<0||ti<0) return;
     const next = [...cur];
     next.splice(fi, 1);
     next.splice(ti, 0, fromId);
@@ -780,15 +784,36 @@ function DraggableCatList({ categories, order, onReorder, renderCat }) {
       {ordered.map(cat=>(
         <div key={cat.id}
           draggable
-          onDragStart={e=>{ setDragId(cat.id); e.dataTransfer.effectAllowed="move"; }}
-          onDragEnd={()=>{ if(dragId&&overId&&dragId!==overId) reorder(dragId,overId); setDragId(null); setOverId(null); }}
-          onDragOver={e=>{ e.preventDefault(); setOverId(cat.id); }}
-          onDragEnter={e=>{ e.preventDefault(); setOverId(cat.id); }}
+          onDragStart={e=>{
+            dragIdRef.current = cat.id;
+            overIdRef.current = null;
+            setDragId(cat.id);
+            e.dataTransfer.effectAllowed="move";
+            e.dataTransfer.setData("text/plain", cat.id);
+          }}
+          onDragEnd={()=>{
+            doReorder(dragIdRef.current, overIdRef.current);
+            dragIdRef.current = null;
+            overIdRef.current = null;
+            setDragId(null);
+            setOverId(null);
+          }}
+          onDragOver={e=>{
+            e.preventDefault();
+            e.dataTransfer.dropEffect="move";
+            if(overIdRef.current !== cat.id) {
+              overIdRef.current = cat.id;
+              setOverId(cat.id);
+            }
+          }}
+          onDragEnter={e=>{ e.preventDefault(); }}
+          onDrop={e=>{ e.preventDefault(); }}
           style={{
-            opacity: dragId===cat.id ? 0.4 : 1,
-            transition:"opacity .15s",
-            outline: overId===cat.id&&dragId!==cat.id ? `2px solid ${T.border}` : "none",
-            borderRadius:4
+            opacity: dragId===cat.id ? 0.35 : 1,
+            transform: dragId===cat.id ? "scale(0.98)" : "scale(1)",
+            transition:"opacity .15s, transform .15s",
+            outline: overId===cat.id&&dragId!==cat.id ? `2px dashed ${T.border}` : "2px solid transparent",
+            borderRadius:6
           }}>
           {renderCat(cat)}
         </div>
@@ -1988,14 +2013,42 @@ const TABS = [
 ];
 
 export default function App({ user, onLogout }) {
-  const [app,setApp]=useState(()=>buildInitialApp());
+  const [app,setApp]=useState(null); // null = not yet loaded from Supabase
   const [tab,setTab]=useState("checklist");
   const [saving,setSaving]=useState(false);
   const [showTheme,setShowTheme]=useState(false);
   const [editingName,setEditingName]=useState(false);
   const [nameInput,setNameInput]=useState("");
 
-  useEffect(()=>{ if(user?.id) loadApp(user.id).then(s=>setApp(s)); },[user?.id]);
+  useEffect(()=>{
+    if(user?.id) {
+      loadApp(user.id).then(s=>setApp(s));
+    } else {
+      // no user yet — show light mode default while auth resolves
+      setApp(buildInitialApp());
+    }
+  },[user?.id]);
+
+  // Show light-mode loading screen while Supabase data loads
+  if(!app) return (
+    <div style={{
+      background:"#F5F2EC", minHeight:"100vh",
+      display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", gap:12
+    }}>
+      <div style={{
+        width:40, height:40, borderRadius:"50%",
+        border:"3px solid #C8C0B0",
+        borderTopColor:"#5ECBA0",
+        animation:"spin 0.8s linear infinite"
+      }}/>
+      <div style={{
+        fontFamily:"DM Mono,monospace", fontSize:11,
+        color:"#78716C", letterSpacing:2, textTransform:"uppercase"
+      }}>Carregando...</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   const persist=useCallback(next=>{
     if(!user?.id) return;
