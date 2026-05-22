@@ -231,31 +231,14 @@ async function loadApp(userId) {
       .select("data")
       .eq("user_id", userId)
       .single();
-
-    // PGRST116 = no rows yet (first login) — totally normal
     if (error) {
-      if (error.code !== "PGRST116") console.error("loadApp error:", error.message, error.code);
+      if (error.code !== "PGRST116") console.error("loadApp error:", error);
       return buildInitialApp();
     }
     if (!data || !data.data) return buildInitialApp();
-
-    // Safely parse JSON — data.data might not be a string in some edge cases
-    let saved;
-    try {
-      saved = typeof data.data === "string" ? JSON.parse(data.data) : data.data;
-    } catch(parseErr) {
-      console.error("loadApp JSON parse error:", parseErr, "raw:", typeof data.data);
-      return buildInitialApp();
-    }
-
-    if (!saved || typeof saved !== "object") return buildInitialApp();
-
-    // saved data wins completely — only fill truly missing keys from defaults
-    const base = buildInitialApp(saved.accentId || "verde");
-    // Only use base values for keys that are completely absent from saved data
-    const result = { ...base };
-    Object.keys(saved).forEach(k => { result[k] = saved[k]; });
-    return result;
+    const saved = JSON.parse(data.data);
+    // Merge: saved data wins; base fills any missing fields
+    return { ...buildInitialApp(saved.accentId||"verde"), ...saved };
   } catch(e) {
     console.error("loadApp exception:", e);
     return buildInitialApp();
@@ -2070,20 +2053,18 @@ const TABS = [
 ];
 
 export default function App({ user, onLogout }) {
-  const [app,setApp]=useState(null); // null = not yet loaded from Supabase
+  const [app,setApp]=useState(()=>buildInitialApp());
   const [tab,setTab]=useState("checklist");
   const [saving,setSaving]=useState(false);
   const [showTheme,setShowTheme]=useState(false);
   const [editingName,setEditingName]=useState(false);
   const [nameInput,setNameInput]=useState("");
-
-  const [saveError, setSaveError] = useState(null);
+  const [saveError,setSaveError]=useState(null);
+  const [loaded,setLoaded]=useState(false);
 
   useEffect(()=>{
     if(user?.id) {
-      loadApp(user.id).then(s=>setApp(s));
-    } else {
-      setApp(buildInitialApp());
+      loadApp(user.id).then(s=>{ setApp(s); setLoaded(true); });
     }
   },[user?.id]);
 
@@ -2157,26 +2138,6 @@ export default function App({ user, onLogout }) {
     });
   },[]);
 
-  // Loading screen — all hooks above, safe to return early now
-  if(!app) return (
-    <div style={{
-      background:"#F5F2EC", minHeight:"100vh",
-      display:"flex", flexDirection:"column",
-      alignItems:"center", justifyContent:"center", gap:12
-    }}>
-      <div style={{
-        width:40, height:40, borderRadius:"50%",
-        border:"3px solid #C8C0B0", borderTopColor:"#5ECBA0",
-        animation:"spin 0.8s linear infinite"
-      }}/>
-      <div style={{fontFamily:"DM Mono,monospace", fontSize:11, color:"#78716C", letterSpacing:2, textTransform:"uppercase"}}>
-        Carregando...
-      </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-
-  // Safe to destructure now — app is guaranteed non-null
   const {categories=[],items=[],entries={},customTags=[],deletedPresets=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=false,babyName="",checklistCatOrder=[],financeCatOrder=[]} = app;
   const pal = ACCENT_PALETTES[accentId]||ACCENT_PALETTES.verde;
   const accent = pal.accent;
@@ -2193,6 +2154,15 @@ export default function App({ user, onLogout }) {
     });
   });
   const globalPct=totalSug>0?Math.round(totalBought/totalSug*100):0;
+
+  // Show loading overlay while Supabase data loads (app shows default state briefly)
+  if(!loaded && user?.id) return (
+    <div style={{background:"#F5F2EC",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}>
+      <div style={{width:40,height:40,borderRadius:"50%",border:"3px solid #C8C0B0",borderTopColor:"#5ECBA0",animation:"spin 0.8s linear infinite"}}/>
+      <div style={{fontFamily:"DM Mono,monospace",fontSize:11,color:"#78716C",letterSpacing:2,textTransform:"uppercase"}}>Carregando...</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   return (
     <div style={{
