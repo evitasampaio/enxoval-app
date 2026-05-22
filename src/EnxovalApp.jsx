@@ -2083,16 +2083,15 @@ export default function App({ user, onLogout }) {
   const [editingName,setEditingName]=useState(false);
   const [nameInput,setNameInput]=useState("");
 
+  const [saveError, setSaveError] = useState(null);
+
   useEffect(()=>{
     if(user?.id) {
       loadApp(user.id).then(s=>setApp(s));
     } else {
-      // no user yet — show light mode default while auth resolves
       setApp(buildInitialApp());
     }
   },[user?.id]);
-
-  const [saveError, setSaveError] = useState(null);
 
   const persist=useCallback(next=>{
     if(!user?.id) return;
@@ -2164,26 +2163,7 @@ export default function App({ user, onLogout }) {
     });
   },[]);
 
-  const {categories=[],items=[],entries={},customTags=[],deletedPresets=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=true,babyName="",checklistCatOrder=[],financeCatOrder=[]} = app;
-  const pal = ACCENT_PALETTES[accentId]||ACCENT_PALETTES.verde;
-  const accent = pal.accent;
-  T = isDark ? DARK : LIGHT; // update module-level theme
-  TAM = isDark ? TAM_DARK : TAM_LIGHT; // update module-level tam colors
-
-  // stats
-  let totalSug=0,totalBought=0,totalPending=0,grandSpent=0;
-  items.forEach(item=>{
-    item.sizes.forEach(sz=>{
-      const units=(entries[`${item.id}_${sz.tam}`]||{}).units||[];
-      totalSug+=sz.qty; totalBought+=units.length;
-      totalPending+=units.filter(u=>!unitDone(u)).length;
-      // sum individual unit prices
-      units.forEach(u=>{ grandSpent+=unitPriceBRL(u); });
-    });
-  });
-  const globalPct=totalSug>0?Math.round(totalBought/totalSug*100):0;
-
-  // Loading screen — shown until Supabase data resolves (all hooks already called above)
+  // Loading screen — all hooks above, safe to return early now
   if(!app) return (
     <div style={{
       background:"#F5F2EC", minHeight:"100vh",
@@ -2201,6 +2181,24 @@ export default function App({ user, onLogout }) {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
+
+  // Safe to destructure now — app is guaranteed non-null
+  const {categories=[],items=[],entries={},customTags=[],deletedPresets=[],priorities=buildDefaultPriorities(ACCENT_PALETTES.verde),accentId="verde",budgetTotal="",budgetByCategory={},isDark=false,babyName="",checklistCatOrder=[],financeCatOrder=[]} = app;
+  const pal = ACCENT_PALETTES[accentId]||ACCENT_PALETTES.verde;
+  const accent = pal.accent;
+  T = isDark ? DARK : LIGHT;
+  TAM = isDark ? TAM_DARK : TAM_LIGHT;
+
+  let totalSug=0,totalBought=0,totalPending=0,grandSpent=0;
+  items.forEach(item=>{
+    item.sizes.forEach(sz=>{
+      const units=(entries[`${item.id}_${sz.tam}`]||{}).units||[];
+      totalSug+=sz.qty; totalBought+=units.length;
+      totalPending+=units.filter(u=>!unitDone(u)).length;
+      units.forEach(u=>{ grandSpent+=unitPriceBRL(u); });
+    });
+  });
+  const globalPct=totalSug>0?Math.round(totalBought/totalSug*100):0;
 
   return (
     <div style={{
