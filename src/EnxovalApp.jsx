@@ -231,23 +231,76 @@ async function loadApp(userId) {
       .select("data")
       .eq("user_id", userId)
       .single();
-    if (error || !data) return buildInitialApp();
-    return { ...buildInitialApp(), ...JSON.parse(data.data) };
-  } catch { return buildInitialApp(); }
+    if (error) {
+      // PGRST116 = no rows found — normal for first login
+      if (error.code !== "PGRST116") console.error("loadApp error:", error);
+      return buildInitialApp();
+    }
+    if (!data) return buildInitialApp();
+    const saved = JSON.parse(data.data);
+    // Smart merge: saved data always wins for ALL keys
+    // buildInitialApp() only provides defaults for keys missing from saved data
+    const base = buildInitialApp(saved.accentId || "verde");
+    return {
+      ...base,
+      ...saved,
+      // Ensure array fields are always arrays even if saved as something else
+      categories: Array.isArray(saved.categories) ? saved.categories : base.categories,
+      items:      Array.isArray(saved.items)      ? saved.items      : base.items,
+      customTags: Array.isArray(saved.customTags) ? saved.customTags : [],
+      deletedPresets: Array.isArray(saved.deletedPresets) ? saved.deletedPresets : [],
+      priorities: Array.isArray(saved.priorities) ? saved.priorities : base.priorities,
+      entries:    saved.entries || base.entries,
+    };
+  } catch(e) {
+    console.error("loadApp exception:", e);
+    return buildInitialApp();
+  }
 }
 
 async function saveApp(state, userId) {
   try {
     const payload = JSON.stringify(state);
-    await supabase.from("app_data").upsert(
+    console.log("saveApp: payload size =", Math.round(payload.length/1024), "KB, userId =", userId);
+    const { error } = await supabase.from("app_data").upsert(
       { user_id: userId, data: payload, updated_at: new Date().toISOString() },
       { onConflict: "user_id" }
     );
-  } catch(e) { console.error("saveApp error:", e); }
+    if (error) {
+      console.error("saveApp supabase error:", error);
+      return { ok: false, error };
+    }
+    return { ok: true };
+  } catch(e) {
+    console.error("saveApp exception:", e);
+    return { ok: false, error: e };
+  }
 }
 
 function fileToDataUrl(f) {
-  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      // Compress image to max 400px wide, 0.7 quality to keep payload small
+      const img=new Image();
+      img.onload=()=>{
+        const maxW=400, maxH=400;
+        let w=img.width, h=img.height;
+        if(w>maxW||h>maxH){
+          if(w/h>maxW/maxH){h=Math.round(h*maxW/w);w=maxW;}
+          else{w=Math.round(w*maxH/h);h=maxH;}
+        }
+        const cv=document.createElement("canvas");
+        cv.width=w; cv.height=h;
+        cv.getContext("2d").drawImage(img,0,0,w,h);
+        res(cv.toDataURL("image/jpeg",0.7));
+      };
+      img.onerror=()=>res(r.result);
+      img.src=r.result;
+    };
+    r.onerror=rej;
+    r.readAsDataURL(f);
+  });
 }
 function allTags(ct, deletedPresets=[]) {
   return [
@@ -2050,9 +2103,17 @@ export default function App({ user, onLogout }) {
     </div>
   );
 
+  const [saveError, setSaveError] = useState(null);
   const persist=useCallback(next=>{
     if(!user?.id) return;
-    setSaving(true); saveApp(next, user.id).then(()=>setSaving(false));
+    setSaving(true);
+    saveApp(next, user.id).then(result=>{
+      setSaving(false);
+      if(result && !result.ok) {
+        setSaveError(result.error?.message || "Erro ao salvar");
+        setTimeout(()=>setSaveError(null), 5000);
+      }
+    });
   },[user?.id]);
   const update=useCallback(fn=>{
     setApp(prev=>{const next=fn(prev);persist(next);return next;});
