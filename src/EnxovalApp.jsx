@@ -250,18 +250,12 @@ async function loadApp(userId) {
 
     if (!saved || typeof saved !== "object") return buildInitialApp();
 
-    // Smart merge: saved wins, buildInitialApp provides defaults for missing keys
+    // saved data wins completely — only fill truly missing keys from defaults
     const base = buildInitialApp(saved.accentId || "verde");
-    return {
-      ...base,
-      ...saved,
-      categories:    Array.isArray(saved.categories)    ? saved.categories    : base.categories,
-      items:         Array.isArray(saved.items)          ? saved.items         : base.items,
-      customTags:    Array.isArray(saved.customTags)     ? saved.customTags    : [],
-      deletedPresets:Array.isArray(saved.deletedPresets) ? saved.deletedPresets: [],
-      priorities:    Array.isArray(saved.priorities)     ? saved.priorities    : base.priorities,
-      entries:       (saved.entries && typeof saved.entries === "object") ? saved.entries : base.entries,
-    };
+    // Only use base values for keys that are completely absent from saved data
+    const result = { ...base };
+    Object.keys(saved).forEach(k => { result[k] = saved[k]; });
+    return result;
   } catch(e) {
     console.error("loadApp exception:", e);
     return buildInitialApp();
