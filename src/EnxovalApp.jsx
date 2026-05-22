@@ -197,6 +197,7 @@ function getPrio(priorities, id) {
 // STORAGE & STATE
 // ─────────────────────────────────────────────────────────────────────────────
 function buildInitialApp(accentId="verde") {
+  if (!ACCENT_PALETTES[accentId]) accentId = "verde"; // fallback if unknown palette
   const accent = ACCENT_PALETTES[accentId];
   const entries = {};
   DEFAULT_ITEMS.forEach(item => item.sizes.forEach(sz => {
@@ -225,30 +226,62 @@ function unitDone(u) { return !!u.photo || u.noPhoto; }
 // ── Supabase persistence ──────────────────────────────────────────────────────
 // Data is stored per-user in Supabase so it syncs across devices
 async function loadApp(userId) {
+  console.log("[loadApp] starting for user:", userId);
   try {
     const { data, error } = await supabase
       .from("app_data")
       .select("data")
       .eq("user_id", userId)
       .single();
+
+    console.log("[loadApp] response:", { hasData: !!data, dataType: data?.data ? typeof data.data : "none", dataLen: data?.data?.length, error: error?.message, code: error?.code });
+
     if (error) {
-      if (error.code !== "PGRST116") console.error("loadApp error:", error);
+      if (error.code !== "PGRST116") console.error("[loadApp] error:", error);
       return buildInitialApp();
     }
-    if (!data || !data.data) return buildInitialApp();
-    const saved = JSON.parse(data.data);
-    // Merge: saved data wins; base fills any missing fields
-    return { ...buildInitialApp(saved.accentId||"verde"), ...saved };
+    if (!data || !data.data) {
+      console.warn("[loadApp] no data returned");
+      return buildInitialApp();
+    }
+
+    let saved;
+    try {
+      saved = JSON.parse(data.data);
+      console.log("[loadApp] parsed OK, keys:", Object.keys(saved).join(", "));
+    } catch(parseErr) {
+      console.error("[loadApp] JSON.parse failed:", parseErr.message);
+      return buildInitialApp();
+    }
+
+    const safeAccentId = saved.accentId && ACCENT_PALETTES[saved.accentId] ? saved.accentId : "verde";
+    const result = { ...buildInitialApp(safeAccentId), ...saved };
+    console.log("[loadApp] merge OK, categories:", result.categories?.length, "items:", result.items?.length);
+    return result;
   } catch(e) {
-    console.error("loadApp exception:", e);
+    console.error("[loadApp] exception:", e.message, e.stack);
     return buildInitialApp();
   }
 }
 
 async function saveApp(state, userId) {
   try {
-    const payload = JSON.stringify(state);
-    console.log("saveApp: payload size =", Math.round(payload.length/1024), "KB, userId =", userId);
+    // Strip base64 photos (legacy) — Storage URLs are kept as-is
+    const stateSans = {
+      ...state,
+      entries: Object.fromEntries(
+        Object.entries(state.entries || {}).map(([k, v]) => [k, {
+          ...v,
+          units: (v.units || []).map(u => ({
+            ...u,
+            // Keep Storage URLs (https://...), strip base64 data URIs
+            photo: u.photo && !isBase64Photo(u.photo) ? u.photo : null
+          }))
+        }])
+      )
+    };
+    const payload = JSON.stringify(stateSans);
+    console.log("saveApp: payload size =", Math.round(payload.length/1024), "KB");
     const { error } = await supabase.from("app_data").upsert(
       { user_id: userId, data: payload, updated_at: new Date().toISOString() },
       { onConflict: "user_id" }
@@ -264,31 +297,61 @@ async function saveApp(state, userId) {
   }
 }
 
-function fileToDataUrl(f) {
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>{
-      // Compress image to max 400px wide, 0.7 quality to keep payload small
-      const img=new Image();
-      img.onload=()=>{
-        const maxW=400, maxH=400;
-        let w=img.width, h=img.height;
-        if(w>maxW||h>maxH){
-          if(w/h>maxW/maxH){h=Math.round(h*maxW/w);w=maxW;}
-          else{w=Math.round(w*maxH/h);h=maxH;}
+// Compress image to canvas and return blob
+function compressImage(file, maxW=800, maxH=800, quality=0.75) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxW || h > maxH) {
+          if (w/h > maxW/maxH) { h = Math.round(h*maxW/w); w = maxW; }
+          else { w = Math.round(w*maxH/h); h = maxH; }
         }
-        const cv=document.createElement("canvas");
-        cv.width=w; cv.height=h;
-        cv.getContext("2d").drawImage(img,0,0,w,h);
-        res(cv.toDataURL("image/jpeg",0.7));
+        const cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        cv.toBlob(blob => blob ? res(blob) : rej(new Error("toBlob failed")), "image/jpeg", quality);
       };
-      img.onerror=()=>res(r.result);
-      img.src=r.result;
+      img.onerror = rej;
+      img.src = r.result;
     };
-    r.onerror=rej;
-    r.readAsDataURL(f);
+    r.onerror = rej;
+    r.readAsDataURL(file);
   });
 }
+
+// Upload photo to Supabase Storage, return public URL
+async function uploadPhoto(file, userId) {
+  try {
+    const blob = await compressImage(file);
+    const ext = "jpg";
+    const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage
+      .from("photos")
+      .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+    if (error) { console.error("uploadPhoto error:", error); return null; }
+    const { data } = supabase.storage.from("photos").getPublicUrl(path);
+    return data.publicUrl;
+  } catch(e) {
+    console.error("uploadPhoto exception:", e);
+    return null;
+  }
+}
+
+// Delete photo from Supabase Storage by URL
+async function deletePhoto(url) {
+  try {
+    // Extract path from URL: .../storage/v1/object/public/photos/USER_ID/FILE.jpg
+    const match = url.match(/photos\/(.+)$/);
+    if (!match) return;
+    await supabase.storage.from("photos").remove([match[1]]);
+  } catch(e) { console.error("deletePhoto error:", e); }
+}
+
+// Legacy: for backward compat during migration, detect base64 photos
+function isBase64Photo(s) { return s && s.startsWith("data:"); }
 function allTags(ct, deletedPresets=[]) {
   return [
     ...PRESET_TAGS.filter(p=>!deletedPresets.includes(p.id)),
@@ -439,14 +502,18 @@ function TagPicker({ selected, customTags, deletedPresets, onToggle }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIT CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove, onCreateTag, accent }) {
+function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove, onCreateTag, accent, userId }) {
   const inputRef = useRef();
   const done = unitDone(unit);
+  const [uploading, setUploading] = useState(false);
   const handleFile = async e => {
-    const f=e.target.files[0];
-    if(!f||!f.type.startsWith("image/")) return;
-    onChange({...unit,photo:await fileToDataUrl(f),noPhoto:false});
-    e.target.value="";
+    const f = e.target.files[0];
+    if (!f || !f.type.startsWith("image/")) return;
+    e.target.value = "";
+    setUploading(true);
+    const url = await uploadPhoto(f, userId);
+    setUploading(false);
+    if (url) onChange({...unit, photo: url, noPhoto: false});
   };
   return (
     <div style={{
@@ -571,7 +638,11 @@ function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove,
             : <span style={{fontSize:unit.noPhoto?22:18,opacity:.3}}>{unit.noPhoto?"○":"◫"}</span>
           }
           {unit.photo&&(
-            <button onClick={e=>{e.stopPropagation();onChange({...unit,photo:null});}} style={{
+            <button onClick={e=>{
+              e.stopPropagation();
+              if(unit.photo && !isBase64Photo(unit.photo)) deletePhoto(unit.photo);
+              onChange({...unit,photo:null});
+            }} style={{
               position:"absolute",top:3,right:3,background:T.bg+"CC",
               border:"none",borderRadius:"50%",color:T.inkL,
               width:16,height:16,cursor:"pointer",fontSize:11,
@@ -580,7 +651,15 @@ function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove,
           )}
         </div>
         <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
-          {!unit.photo&&(
+          {uploading&&(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",
+              height:44,gap:8,...mono,fontSize:11,color:accent}}>
+              <div style={{width:14,height:14,borderRadius:"50%",border:`2px solid ${T.border}`,
+                borderTopColor:accent,animation:"spin 0.7s linear infinite"}}/>
+              Enviando foto...
+            </div>
+          )}
+          {!unit.photo&&!uploading&&(
             <button onClick={()=>inputRef.current.click()} style={{
               background:accent+"22",color:accent,border:`1px solid ${accent}44`,
               borderRadius:4,padding:"7px 0",...mono,fontSize:11,
@@ -623,7 +702,7 @@ function UnitCard({ index, unit, customTags, deletedPresets, onChange, onRemove,
 // ─────────────────────────────────────────────────────────────────────────────
 // SIZE ROW
 // ─────────────────────────────────────────────────────────────────────────────
-function SizeRow({ sz, entryKey, entry, customTags, deletedPresets, onChange, onCreateTag, accent }) {
+function SizeRow({ sz, entryKey, entry, customTags, deletedPresets, onChange, onCreateTag, accent, userId }) {
   const [open, setOpen] = useState(false);
   const units = entry?.units||[];
   const bought = units.length;
@@ -678,6 +757,7 @@ function SizeRow({ sz, entryKey, entry, customTags, deletedPresets, onChange, on
             :units.map((u,i)=>(
               <UnitCard key={i} index={i} unit={u} accent={accent}
                 customTags={customTags} deletedPresets={deletedPresets}
+                userId={userId}
                 onChange={val=>{const n=[...units];n[i]=val;upUnits(n);}}
                 onRemove={()=>upUnits(units.filter((_,j)=>j!==i))}
                 onCreateTag={onCreateTag}/>
@@ -712,7 +792,7 @@ function SizeRow({ sz, entryKey, entry, customTags, deletedPresets, onChange, on
 // ─────────────────────────────────────────────────────────────────────────────
 // ITEM CARD
 // ─────────────────────────────────────────────────────────────────────────────
-function ItemCard({ item, priorities, entries, customTags, deletedPresets, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, accent }) {
+function ItemCard({ item, priorities, entries, customTags, deletedPresets, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, accent, userId }) {
   const [open, setOpen] = useState(false);
   const pm = getPrio(priorities,item.priority);
   const totalSug    = item.sizes.reduce((s,sz)=>s+sz.qty,0);
@@ -763,6 +843,7 @@ function ItemCard({ item, priorities, entries, customTags, deletedPresets, onCha
               <SizeRow key={key} sz={sz} entryKey={key} accent={accent}
                 entry={entries[key]||{units:[]}}
                 customTags={customTags} deletedPresets={deletedPresets||[]}
+                userId={userId}
                 onChange={onChangeEntry}
                 onCreateTag={onCreateTag}/>
             );
@@ -862,7 +943,7 @@ function DraggableCatList({ categories, order, onReorder, renderCat }) {
   );
 }
 
-function Checklist({ categories, items, priorities, entries, customTags, deletedPresets, catOrder, accent, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, onReorderCats }) {
+function Checklist({ categories, items, priorities, entries, customTags, deletedPresets, catOrder, accent, userId, onChangeEntry, onCreateTag, onDeleteItem, onUpdateItem, onReorderCats }) {
   const [filterPrio, setFilterPrio] = useState("todos");
   const [filterCat,  setFilterCat]  = useState(null);
   const [search, setSearch] = useState("");
@@ -947,6 +1028,7 @@ function Checklist({ categories, items, priorities, entries, customTags, deleted
               {cat.items.map(item=>(
                 <ItemCard key={item.id} item={item} priorities={priorities} accent={accent}
                   entries={entries} customTags={customTags} deletedPresets={deletedPresets}
+                  userId={userId}
                   onChangeEntry={onChangeEntry} onCreateTag={onCreateTag}
                   onDeleteItem={onDeleteItem} onUpdateItem={onUpdateItem}/>
               ))}
@@ -2266,7 +2348,7 @@ export default function App({ user, onLogout }) {
         {tab==="checklist"&&(
           <Checklist categories={categories} items={items} priorities={priorities}
             entries={entries} customTags={customTags} deletedPresets={deletedPresets} accent={accent}
-            catOrder={checklistCatOrder}
+            catOrder={checklistCatOrder} userId={user?.id}
             onReorderCats={reorderChecklistCats}
             onChangeEntry={updateEntry} onCreateTag={createTag}
             onDeleteItem={deleteItem} onUpdateItem={updateItem}/>
