@@ -231,26 +231,36 @@ async function loadApp(userId) {
       .select("data")
       .eq("user_id", userId)
       .single();
+
+    // PGRST116 = no rows yet (first login) — totally normal
     if (error) {
-      // PGRST116 = no rows found — normal for first login
-      if (error.code !== "PGRST116") console.error("loadApp error:", error);
+      if (error.code !== "PGRST116") console.error("loadApp error:", error.message, error.code);
       return buildInitialApp();
     }
-    if (!data) return buildInitialApp();
-    const saved = JSON.parse(data.data);
-    // Smart merge: saved data always wins for ALL keys
-    // buildInitialApp() only provides defaults for keys missing from saved data
+    if (!data || !data.data) return buildInitialApp();
+
+    // Safely parse JSON — data.data might not be a string in some edge cases
+    let saved;
+    try {
+      saved = typeof data.data === "string" ? JSON.parse(data.data) : data.data;
+    } catch(parseErr) {
+      console.error("loadApp JSON parse error:", parseErr, "raw:", typeof data.data);
+      return buildInitialApp();
+    }
+
+    if (!saved || typeof saved !== "object") return buildInitialApp();
+
+    // Smart merge: saved wins, buildInitialApp provides defaults for missing keys
     const base = buildInitialApp(saved.accentId || "verde");
     return {
       ...base,
       ...saved,
-      // Ensure array fields are always arrays even if saved as something else
-      categories: Array.isArray(saved.categories) ? saved.categories : base.categories,
-      items:      Array.isArray(saved.items)      ? saved.items      : base.items,
-      customTags: Array.isArray(saved.customTags) ? saved.customTags : [],
-      deletedPresets: Array.isArray(saved.deletedPresets) ? saved.deletedPresets : [],
-      priorities: Array.isArray(saved.priorities) ? saved.priorities : base.priorities,
-      entries:    saved.entries || base.entries,
+      categories:    Array.isArray(saved.categories)    ? saved.categories    : base.categories,
+      items:         Array.isArray(saved.items)          ? saved.items         : base.items,
+      customTags:    Array.isArray(saved.customTags)     ? saved.customTags    : [],
+      deletedPresets:Array.isArray(saved.deletedPresets) ? saved.deletedPresets: [],
+      priorities:    Array.isArray(saved.priorities)     ? saved.priorities    : base.priorities,
+      entries:       (saved.entries && typeof saved.entries === "object") ? saved.entries : base.entries,
     };
   } catch(e) {
     console.error("loadApp exception:", e);
@@ -2082,28 +2092,8 @@ export default function App({ user, onLogout }) {
     }
   },[user?.id]);
 
-  // Show light-mode loading screen while Supabase data loads
-  if(!app) return (
-    <div style={{
-      background:"#F5F2EC", minHeight:"100vh",
-      display:"flex", flexDirection:"column",
-      alignItems:"center", justifyContent:"center", gap:12
-    }}>
-      <div style={{
-        width:40, height:40, borderRadius:"50%",
-        border:"3px solid #C8C0B0",
-        borderTopColor:"#5ECBA0",
-        animation:"spin 0.8s linear infinite"
-      }}/>
-      <div style={{
-        fontFamily:"DM Mono,monospace", fontSize:11,
-        color:"#78716C", letterSpacing:2, textTransform:"uppercase"
-      }}>Carregando...</div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-
   const [saveError, setSaveError] = useState(null);
+
   const persist=useCallback(next=>{
     if(!user?.id) return;
     setSaving(true);
@@ -2192,6 +2182,25 @@ export default function App({ user, onLogout }) {
     });
   });
   const globalPct=totalSug>0?Math.round(totalBought/totalSug*100):0;
+
+  // Loading screen — shown until Supabase data resolves (all hooks already called above)
+  if(!app) return (
+    <div style={{
+      background:"#F5F2EC", minHeight:"100vh",
+      display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", gap:12
+    }}>
+      <div style={{
+        width:40, height:40, borderRadius:"50%",
+        border:"3px solid #C8C0B0", borderTopColor:"#5ECBA0",
+        animation:"spin 0.8s linear infinite"
+      }}/>
+      <div style={{fontFamily:"DM Mono,monospace", fontSize:11, color:"#78716C", letterSpacing:2, textTransform:"uppercase"}}>
+        Carregando...
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
 
   return (
     <div style={{
