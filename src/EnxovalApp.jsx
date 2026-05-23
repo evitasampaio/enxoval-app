@@ -226,7 +226,7 @@ function unitDone(u) { return !!u.photo || u.noPhoto; }
 // ── Supabase persistence ──────────────────────────────────────────────────────
 // Data is stored per-user in Supabase so it syncs across devices
 async function loadApp(userId) {
-  console.log("[loadApp] starting for user:", userId);
+  console.log("[load] starting for user:", userId?.slice(0,8));
   try {
     const { data, error } = await supabase
       .from("app_data")
@@ -234,67 +234,113 @@ async function loadApp(userId) {
       .eq("user_id", userId)
       .single();
 
-    console.log("[loadApp] response:", { hasData: !!data, dataType: data?.data ? typeof data.data : "none", dataLen: data?.data?.length, error: error?.message, code: error?.code });
-
     if (error) {
-      if (error.code !== "PGRST116") console.error("[loadApp] error:", error);
+      if (error.code !== "PGRST116") {
+        console.error("[load] supabase error:", error.message);
+        // Fall back to localStorage backup
+        const backup = loadBackup(userId);
+        if (backup) return { ...buildInitialApp(backup.accentId||"verde"), ...backup };
+      }
       return buildInitialApp();
     }
-    if (!data || !data.data) {
-      console.warn("[loadApp] no data returned");
+
+    if (!data?.data) {
+      console.warn("[load] no data, checking backup");
+      const backup = loadBackup(userId);
+      if (backup) return { ...buildInitialApp(backup.accentId||"verde"), ...backup };
       return buildInitialApp();
     }
 
     let saved;
     try {
       saved = JSON.parse(data.data);
-      console.log("[loadApp] parsed OK, keys:", Object.keys(saved).join(", "));
-    } catch(parseErr) {
-      console.error("[loadApp] JSON.parse failed:", parseErr.message);
+    } catch(e) {
+      console.error("[load] JSON parse failed, trying backup");
+      const backup = loadBackup(userId);
+      if (backup) return { ...buildInitialApp(backup.accentId||"verde"), ...backup };
       return buildInitialApp();
     }
 
-    const safeAccentId = saved.accentId && ACCENT_PALETTES[saved.accentId] ? saved.accentId : "verde";
+    // Use Supabase data — also update localStorage backup
+    try { localStorage.setItem("enxoval_backup_" + userId, JSON.stringify(saved)); } catch(e) {}
+
+    const safeAccentId = ACCENT_PALETTES[saved.accentId] ? saved.accentId : "verde";
     const result = { ...buildInitialApp(safeAccentId), ...saved };
-    console.log("[loadApp] merge OK, categories:", result.categories?.length, "items:", result.items?.length);
+    console.log("[load] OK — cats:", result.categories?.length, "items:", result.items?.length);
     return result;
+
   } catch(e) {
-    console.error("[loadApp] exception:", e.message, e.stack);
+    console.error("[load] exception:", e.message);
+    const backup = loadBackup(userId);
+    if (backup) return { ...buildInitialApp(backup.accentId||"verde"), ...backup };
     return buildInitialApp();
   }
 }
 
-async function saveApp(state, userId) {
-  try {
-    // Strip base64 photos (legacy) — Storage URLs are kept as-is
-    const stateSans = {
-      ...state,
-      entries: Object.fromEntries(
-        Object.entries(state.entries || {}).map(([k, v]) => [k, {
-          ...v,
-          units: (v.units || []).map(u => ({
+// Debounce timer — avoids saving on every keystroke
+let _saveTimer = null;
+
+function stripPhotos(state) {
+  return {
+    ...state,
+    entries: Object.fromEntries(
+      Object.entries(state.entries || {}).map(([k, v]) => {
+        const entry = v || {};                    // ← protege contra entry null
+        return [k, {
+          ...entry,
+          units: (entry.units || []).map(u => ({
             ...u,
-            // Keep Storage URLs (https://...), strip base64 data URIs
             photo: u.photo && !isBase64Photo(u.photo) ? u.photo : null
           }))
-        }])
-      )
-    };
-    const payload = JSON.stringify(stateSans);
-    console.log("saveApp: payload size =", Math.round(payload.length/1024), "KB");
-    const { error } = await supabase.from("app_data").upsert(
-      { user_id: userId, data: payload, updated_at: new Date().toISOString() },
-      { onConflict: "user_id" }
-    );
-    if (error) {
-      console.error("saveApp supabase error:", error);
-      return { ok: false, error };
-    }
-    return { ok: true };
-  } catch(e) {
-    console.error("saveApp exception:", e);
-    return { ok: false, error: e };
-  }
+        }];
+      })
+    )
+  };
+}
+
+async function saveApp(state, userId) {
+  // Always save to localStorage immediately as backup
+  try {
+    const stripped = stripPhotos(state);
+    localStorage.setItem("enxoval_backup_" + userId, JSON.stringify(stripped));
+  } catch(e) { /* localStorage full — ignore */ }
+
+  // Debounce Supabase save by 1.5s to avoid hammering the API
+  return new Promise((resolve) => {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(async () => {
+      try {
+        const stripped = stripPhotos(state);
+        const payload = JSON.stringify(stripped);
+        console.log("[save] payload:", Math.round(payload.length/1024), "KB, uid:", userId?.slice(0,8));
+        const { error } = await supabase.from("app_data").upsert(
+          { user_id: userId, data: payload, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" }
+        );
+        if (error) {
+          console.error("[save] supabase error:", error.message, error.code);
+          resolve({ ok: false, error });
+        } else {
+          console.log("[save] OK");
+          resolve({ ok: true });
+        }
+      } catch(e) {
+        console.error("[save] exception:", e.message);
+        resolve({ ok: false, error: e });
+      }
+    }, 1500);
+  });
+}
+
+// Load from localStorage backup if Supabase fails
+function loadBackup(userId) {
+  try {
+    const raw = localStorage.getItem("enxoval_backup_" + userId);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    console.log("[load] using localStorage backup");
+    return saved;
+  } catch(e) { return null; }
 }
 
 // Compress image to canvas and return blob
@@ -2150,20 +2196,56 @@ export default function App({ user, onLogout }) {
     }
   },[user?.id]);
 
+  // Use ref to always have fresh user.id without stale closure
+  const userIdRef = useRef(user?.id);
+  useEffect(()=>{ userIdRef.current = user?.id; },[user?.id]);
+
   const persist=useCallback(next=>{
-    if(!user?.id) return;
+    const uid = userIdRef.current;
+    if(!uid) return;
     setSaving(true);
-    saveApp(next, user.id).then(result=>{
+    saveApp(next, uid).then(result=>{
       setSaving(false);
       if(result && !result.ok) {
         setSaveError(result.error?.message || "Erro ao salvar");
         setTimeout(()=>setSaveError(null), 5000);
       }
     });
-  },[user?.id]);
-  const update=useCallback(fn=>{
-    setApp(prev=>{const next=fn(prev);persist(next);return next;});
   },[]);
+  const persistRef = useRef(persist);
+  useEffect(()=>{ persistRef.current = persist; },[persist]);
+
+  const update=useCallback(fn=>{
+    setApp(prev=>{
+      const next=fn(prev);
+      persistRef.current(next);
+      return next;
+    });
+  },[]);
+
+  // ── Realtime sync — reload when another device saves ─────────────────────
+  useEffect(()=>{
+    if(!user?.id) return;
+    const channel = supabase
+      .channel('app_data_changes')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'app_data',
+        filter: `user_id=eq.${user.id}`
+      }, payload => {
+        // Another device saved — reload the latest data
+        if(payload.new?.data) {
+          try {
+            const saved = JSON.parse(payload.new.data);
+            const base = buildInitialApp(saved.accentId||"verde");
+            setApp({ ...base, ...saved });
+          } catch(e) { console.error("Realtime parse error:", e); }
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  },[user?.id]);
 
   const updateEntry   = useCallback((key,val)=>{ update(prev=>({...prev,entries:{...prev.entries,[key]:val}})); },[]);
   const createTag     = useCallback(t=>{ update(prev=>({...prev,customTags:[...(prev.customTags||[]),t]})); },[]);
